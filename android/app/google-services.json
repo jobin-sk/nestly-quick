@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "483608512733",
+    "project_id": "nestlyquick-1702c",
+    "storage_bucket": "nestlyquick-1702c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:483608512733:android:6f9f7be35b64092d0f3334",
+        "android_client_info": {
+          "package_name": "com.example.nestlyquick"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuvFyqAmjAifWnlE8xurn8U4lQStCWBWk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

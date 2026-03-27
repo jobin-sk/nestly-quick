@@ -1,121 +1,236 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'screens/login_screen.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/folder_screen.dart';
+import 'screens/list_view_screen.dart';
+import 'screens/share_list_screen.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/settings_screen.dart';
+import 'screens/edit_profile_screen.dart';
+import 'theme/colors.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  // Ensure Flutter is initialized before Firebase
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase — must happen before runApp
+  await Firebase.initializeApp();
+
+  runApp(const NestlyQuickApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+// root widget of the entire app
+class NestlyQuickApp extends StatelessWidget {
+  const NestlyQuickApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
+    return MaterialApp.router(
+      title: 'NestlyQuick',
+      debugShowCheckedModeBanner: false,
+
+      // App-wide theme using our purple/pink color scheme
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.primary,
+          primary: AppColors.primary,
+          background: AppColors.background,
+        ),
+        scaffoldBackgroundColor: AppColors.background,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.background,
+          foregroundColor: AppColors.dark,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.primaryLighter,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          ),
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+
+      // GoRouter handles all navigation
+      routerConfig: _router,
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+// GoRouter configuration — defines all routes in the app
+final GoRouter _router = GoRouter(
+  // app starts at login screen
+  initialLocation: '/login',
+  routes: [
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+    // login screen doesn't no bottom nav
+    GoRoute(
+      path: '/login',
+      builder: (context, state) => const LoginScreen(),
+    ),
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
+    // main shell  wraps all tabs with the bottom navigation bar
+    ShellRoute(
+      builder: (context, state, child) => ScaffoldWithBottomNav(child: child),
+      routes: [
 
-  final String title;
+        // Lists tab — the main dashboard showing all lists
+        GoRoute(
+          path: '/dashboard',
+          builder: (context, state) => const DashboardScreen(),
+          routes: [
 
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
+            // Folder screen — pushed on top when a folder card is tapped
+            GoRoute(
+              path: 'folder/:folderId',
+              builder: (context, state) => FolderScreen(
+                folderId: state.pathParameters['folderId']!,
+              ),
+            ),
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+            // List view screen — pushed on top when a list card is tapped
+            GoRoute(
+              path: 'list/:listId',
+              builder: (context, state) => ListViewScreen(
+                listId: state.pathParameters['listId']!,
+              ),
+            ),
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+            // Share list screen — pushed from inside list view
+            GoRoute(
+              path: 'list/:listId/share',
+              builder: (context, state) => ShareListScreen(
+                listId: state.pathParameters['listId']!,
+              ),
+            ),
+          ],
+        ),
+
+        // Friends tab
+        GoRoute(
+          path: '/friends',
+          builder: (context, state) => const FriendsPlaceholderScreen(),
+        ),
+
+        // Notifications tab
+        GoRoute(
+          path: '/notifications',
+          builder: (context, state) => const NotificationsScreen(),
+        ),
+
+        // Settings tab
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsScreen(),
+          routes: [
+            // Edit profile — pushed from settings
+            GoRoute(
+              path: 'edit-profile',
+              builder: (context, state) => const EditProfileScreen(),
+            ),
+          ],
+        ),
+      ],
+    ),
+  ],
+);
+
+// bottom navigation shell  persists across all tab screens
+class ScaffoldWithBottomNav extends StatelessWidget {
+  final Widget child;
+  const ScaffoldWithBottomNav({super.key, required this.child});
+
+  // Returns the index of the currently active tab based on the route
+  int _getCurrentIndex(BuildContext context) {
+    final location = GoRouterState.of(context).uri.toString();
+    if (location.startsWith('/dashboard')) return 0;
+    if (location.startsWith('/friends')) return 1;
+    if (location.startsWith('/notifications')) return 2;
+    if (location.startsWith('/settings')) return 3;
+    return 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+      body: child,
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _getCurrentIndex(context),
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.subtext,
+        backgroundColor: AppColors.background,
+        type: BottomNavigationBarType.fixed,
+        elevation: 8,
+        onTap: (index) {
+          // Navigate to the correct tab when tapped
+          switch (index) {
+            case 0:
+              context.go('/dashboard');
+              break;
+            case 1:
+              context.go('/friends');
+              break;
+            case 2:
+              context.go('/notifications');
+              break;
+            case 3:
+              context.go('/settings');
+              break;
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list_rounded),
+            label: 'Lists',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_outline_rounded),
+            label: 'Friends',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications_none_rounded),
+            label: 'Notifs',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_outlined),
+            label: 'Settings',
+          ),
+        ],
       ),
+    );
+  }
+}
+
+// temporary placeholder for Friends screen  will be built out later
+class FriendsPlaceholderScreen extends StatelessWidget {
+  const FriendsPlaceholderScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+        child: Text('Friends — Coming Soon'),
       ),
     );
   }
