@@ -10,6 +10,7 @@ import 'screens/notifications_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/edit_profile_screen.dart';
 import 'theme/colors.dart';
+import 'screens/signup_screen.dart';
 
 void main() async {
   // Ensure Flutter is initialized before Firebase
@@ -88,6 +89,11 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/login',
       builder: (context, state) => const LoginScreen(),
+      ),
+// Signup screen — no bottom nav
+    GoRoute(
+      path: '/signup',
+      builder: (context, state) => const SignupScreen(),
     ),
 
     // main shell  wraps all tabs with the bottom navigation bar
