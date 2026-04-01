@@ -37,6 +37,9 @@ dependencies:
   # Navigation
   go_router: ^14.0.0
 
+  # State management — keeps UI updated when data changes
+  provider: ^6.1.2
+
   # Firebase — core required for all Firebase services
   firebase_core: ^3.0.0
 
@@ -66,16 +69,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

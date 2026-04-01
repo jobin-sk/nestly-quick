@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../theme/colors.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,12 +31,66 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // called when the user taps Log In
-  void _handleLogin() {
+  void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
-      // TODO Week 5: replace with Firebase Authentication login
-      // for now navigate directly to dashboard
-      context.go('/dashboard');
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final error = await authService.signIn(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
     }
+  }
+
+  // opens the forgot password dialog
+  void _showForgotPasswordDialog(BuildContext context) {
+    final resetEmailController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'Reset Password',
+          style: TextStyle(color: AppColors.dark, fontSize: 16),
+        ),
+        content: TextField(
+          controller: resetEmailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            hintText: 'Enter your email',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.subtext),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final authService = Provider.of<AuthService>(context, listen: false);
+              final error = await authService.sendPasswordReset(
+                email: resetEmailController.text,
+              );
+              Navigator.pop(dialogContext);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(error ?? 'Password reset link sent — check your email'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Send Link'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -52,26 +108,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
 
-                  // app logo / title
+                  // app logo image
                   const SizedBox(height: 20),
-                  Text(
-                    'NestlyQuick',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Nested Lists. Quick.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.subtext,
-                    ),
+                  Image.asset(
+                    'assets/nestlyquickWithWriting.png',
+                    height: 200,
                   ),
                   const SizedBox(height: 48),
 
@@ -93,7 +134,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       hintText: 'your@email.com',
                       hintStyle: TextStyle(color: AppColors.subtext),
                     ),
-                    // Validation — email must not be empty
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Please enter your email';
@@ -103,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Password field
+                  // password field
                   const Text(
                     'Password',
                     style: TextStyle(
@@ -119,7 +159,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     decoration: InputDecoration(
                       hintText: '••••••••',
                       hintStyle: const TextStyle(color: AppColors.subtext),
-                      // Toggle to show/hide password
                       suffixIcon: IconButton(
                         icon: Icon(
                           _passwordVisible
@@ -134,7 +173,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                       ),
                     ),
-                    // Validation — password must not be empty
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your password';
@@ -148,10 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {
-                        // TODO Week 5: trigger Firebase password reset
-                        _showForgotPasswordDialog(context);
-                      },
+                      onPressed: () => _showForgotPasswordDialog(context),
                       child: const Text(
                         'Forgot Password?',
                         style: TextStyle(
@@ -163,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Log in button
+                  // log in button
                   ElevatedButton(
                     onPressed: _handleLogin,
                     style: ElevatedButton.styleFrom(
@@ -179,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Divider between login and signup
+                  // divider
                   Row(
                     children: [
                       const Expanded(child: Divider(color: AppColors.border)),
@@ -198,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Create account button — navigates to signup screen
+                  // create account button
                   OutlinedButton(
                     onPressed: () => context.push('/signup'),
                     style: OutlinedButton.styleFrom(
@@ -220,48 +255,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  // Forgot password dialog — prompts user to enter email for reset link
-  void _showForgotPasswordDialog(BuildContext context) {
-    final resetEmailController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'Reset Password',
-          style: TextStyle(color: AppColors.dark, fontSize: 16),
-        ),
-        content: TextField(
-          controller: resetEmailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            hintText: 'Enter your email',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.subtext),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // TODO Week 5: call Firebase sendPasswordResetEmail
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Password reset link sent — check your email'),
-                ),
-              );
-            },
-            child: const Text('Send Link'),
-          ),
-        ],
       ),
     );
   }

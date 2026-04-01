@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
+import 'screens/signup_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/folder_screen.dart';
 import 'screens/list_view_screen.dart';
@@ -9,8 +12,8 @@ import 'screens/share_list_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/edit_profile_screen.dart';
+import 'services/auth_service.dart';
 import 'theme/colors.dart';
-import 'screens/signup_screen.dart';
 
 void main() async {
   // Ensure Flutter is initialized before Firebase
@@ -19,10 +22,17 @@ void main() async {
   // Initialize Firebase — must happen before runApp
   await Firebase.initializeApp();
 
-  runApp(const NestlyQuickApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthService()),
+      ],
+      child: const NestlyQuickApp(),
+    ),
+  );
 }
 
-// root widget of the entire app
+// Root widget of the entire app
 class NestlyQuickApp extends StatelessWidget {
   const NestlyQuickApp({super.key});
 
@@ -73,57 +83,54 @@ class NestlyQuickApp extends StatelessWidget {
         ),
       ),
 
-      // GoRouter handles all navigation
       routerConfig: _router,
     );
   }
 }
 
-// GoRouter configuration — defines all routes in the app
 final GoRouter _router = GoRouter(
-  // app starts at login screen
   initialLocation: '/login',
-  routes: [
 
-    // login screen doesn't no bottom nav
+  // redirect checks Firebase auth state on every navigation
+  redirect: (context, state) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final isLoggedIn = authService.currentUser != null;
+    final isOnAuthScreen = state.matchedLocation == '/login' ||
+        state.matchedLocation == '/signup';
+
+    if (!isLoggedIn && !isOnAuthScreen) return '/login';
+    if (isLoggedIn && isOnAuthScreen) return '/dashboard';
+    return null;
+  },
+
+  routes: [
     GoRoute(
       path: '/login',
       builder: (context, state) => const LoginScreen(),
-      ),
-// Signup screen — no bottom nav
+    ),
     GoRoute(
       path: '/signup',
       builder: (context, state) => const SignupScreen(),
     ),
-
-    // main shell  wraps all tabs with the bottom navigation bar
     ShellRoute(
       builder: (context, state, child) => ScaffoldWithBottomNav(child: child),
       routes: [
-
-        // Lists tab — the main dashboard showing all lists
         GoRoute(
           path: '/dashboard',
           builder: (context, state) => const DashboardScreen(),
           routes: [
-
-            // Folder screen — pushed on top when a folder card is tapped
             GoRoute(
               path: 'folder/:folderId',
               builder: (context, state) => FolderScreen(
                 folderId: state.pathParameters['folderId']!,
               ),
             ),
-
-            // List view screen — pushed on top when a list card is tapped
             GoRoute(
               path: 'list/:listId',
               builder: (context, state) => ListViewScreen(
                 listId: state.pathParameters['listId']!,
               ),
             ),
-
-            // Share list screen — pushed from inside list view
             GoRoute(
               path: 'list/:listId/share',
               builder: (context, state) => ShareListScreen(
@@ -132,25 +139,18 @@ final GoRouter _router = GoRouter(
             ),
           ],
         ),
-
-        // Friends tab
         GoRoute(
           path: '/friends',
           builder: (context, state) => const FriendsPlaceholderScreen(),
         ),
-
-        // Notifications tab
         GoRoute(
           path: '/notifications',
           builder: (context, state) => const NotificationsScreen(),
         ),
-
-        // Settings tab
         GoRoute(
           path: '/settings',
           builder: (context, state) => const SettingsScreen(),
           routes: [
-            // Edit profile — pushed from settings
             GoRoute(
               path: 'edit-profile',
               builder: (context, state) => const EditProfileScreen(),
@@ -162,12 +162,10 @@ final GoRouter _router = GoRouter(
   ],
 );
 
-// bottom navigation shell  persists across all tab screens
 class ScaffoldWithBottomNav extends StatelessWidget {
   final Widget child;
   const ScaffoldWithBottomNav({super.key, required this.child});
 
-  // Returns the index of the currently active tab based on the route
   int _getCurrentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     if (location.startsWith('/dashboard')) return 0;
@@ -189,7 +187,6 @@ class ScaffoldWithBottomNav extends StatelessWidget {
         type: BottomNavigationBarType.fixed,
         elevation: 8,
         onTap: (index) {
-          // Navigate to the correct tab when tapped
           switch (index) {
             case 0:
               context.go('/dashboard');
@@ -228,7 +225,6 @@ class ScaffoldWithBottomNav extends StatelessWidget {
   }
 }
 
-// temporary placeholder for Friends screen  will be built out later
 class FriendsPlaceholderScreen extends StatelessWidget {
   const FriendsPlaceholderScreen({super.key});
 
