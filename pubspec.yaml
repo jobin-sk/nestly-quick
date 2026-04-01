@@ -33,7 +33,8 @@ dependencies:
 
   # UI
   cupertino_icons: ^1.0.8
-
+  # FAB speed dial menu — expands into multiple action buttons
+  flutter_speed_dial: ^7.0.0
   # Navigation
   go_router: ^14.0.0
 
