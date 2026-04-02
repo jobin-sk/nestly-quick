@@ -215,7 +215,7 @@ class ScaffoldWithBottomNav extends StatelessWidget {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.notifications_none_rounded),
-            label: 'Notifs',
+            label: 'Alerts',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),

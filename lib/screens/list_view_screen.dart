@@ -16,6 +16,7 @@ class ListViewScreen extends StatefulWidget {
 class _ListViewScreenState extends State<ListViewScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool _completedDialogShowing = false;
 
   // Currently selected category filter — null means show all
   String? _selectedCategoryId;
@@ -88,7 +89,7 @@ class _ListViewScreenState extends State<ListViewScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('🎉 Everything\'s Done!',
-            style: TextStyle(color: AppColors.dark, fontSize: 16, fontWeight: FontWeight.w700),
+            style: TextStyle(color: AppColors.dark, fontSize: 20, fontWeight: FontWeight.w700),
             textAlign: TextAlign.center),
         content: const Text('All items are completed. What would you like to do?',
             style: TextStyle(color: AppColors.subtext, fontSize: 14),
@@ -104,15 +105,21 @@ class _ListViewScreenState extends State<ListViewScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
+              context.go('/dashboard');
               await _clearCompleted(completedItems);
               await _firestore.collection('lists').doc(widget.listId).delete();
-              if (mounted) context.go('/dashboard');
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
             child: const Text('Delete Entire List'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              Navigator.pop(context);
+              // Mark that the user has dismissed this dialog so it doesn't show again
+              await _firestore.collection('lists').doc(widget.listId).update({
+                'allCompletedDismissed': true,
+              });
+            },
             child: const Text('Keep for Reference',
                 style: TextStyle(color: AppColors.subtext)),
           ),
@@ -195,48 +202,58 @@ class _ListViewScreenState extends State<ListViewScreen> {
               const Text('Category (optional)',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
               const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                value: selectedCategoryId,
-                decoration: InputDecoration(
-                  hintText: 'Select category...',
-                  hintStyle: const TextStyle(color: AppColors.subtext),
-                  filled: true,
-                  fillColor: AppColors.primaryLighter,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                ),
-                items: [
-                  const DropdownMenuItem<String>(
-                    value: '__new__',
-                    child: Text('+ Add new category',
-                        style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
-                  ),
-                  ...categories.map((cat) => DropdownMenuItem<String>(
-                    value: cat.id,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 12, height: 12,
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: Color(int.parse('0xFF${cat['color'].toString().replaceAll('#', '')}')),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                        Text(cat['name']),
-                      ],
+              // StreamBuilder inside the sheet so categories update in real time
+              StreamBuilder(
+                stream: _firestore
+                    .collection('categories')
+                    .where('listId', isEqualTo: widget.listId)
+                    .snapshots(),
+                builder: (context, AsyncSnapshot<QuerySnapshot> catSnapshot) {
+                  final liveCategories = catSnapshot.data?.docs ?? [];
+                  return DropdownButtonFormField<String>(
+                    value: selectedCategoryId,
+                    decoration: InputDecoration(
+                      hintText: 'Select category...',
+                      hintStyle: const TextStyle(color: AppColors.subtext),
+                      filled: true,
+                      fillColor: AppColors.primaryLighter,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
                     ),
-                  )),
-                ],
-                onChanged: (value) {
-                  if (value == '__new__') {
-                    Navigator.pop(context);
-                    _showAddCategorySheet(context);
-                  } else {
-                    setSheetState(() => selectedCategoryId = value);
-                  }
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: '__new__',
+                        child: Text('+ Add new category',
+                            style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                      ),
+                      ...liveCategories.map((cat) => DropdownMenuItem<String>(
+                        value: cat.id,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 12, height: 12,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: Color(int.parse('0xFF${cat['color'].toString().replaceAll('#', '')}')),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                            Text(cat['name']),
+                          ],
+                        ),
+                      )),
+                    ],
+                    onChanged: (value) {
+                      if (value == '__new__') {
+                        // Don't close Add Item sheet — open Add Category on top
+                        _showAddCategorySheet(context);
+                      } else {
+                        setSheetState(() => selectedCategoryId = value);
+                      }
+                    },
+                  );
                 },
               ),
               const SizedBox(height: 12),
@@ -270,6 +287,7 @@ class _ListViewScreenState extends State<ListViewScreen> {
                   await _firestore.collection('lists').doc(widget.listId).update({
                     'lastEditedBy': _userId,
                     'updatedAt': FieldValue.serverTimestamp(),
+                    'allCompletedDismissed': false,
                   });
                   if (mounted) Navigator.pop(context);
                 },
@@ -285,9 +303,15 @@ class _ListViewScreenState extends State<ListViewScreen> {
   // Bottom sheet to add a new category
   void _showAddCategorySheet(BuildContext context) {
     final nameController = TextEditingController();
-    // Updated to more distinct colors
-    final colors = ['#DBEAFE', '#EDE9FE', '#FCE7F3', '#FFEDD5', '#FEE2E2', '#DCFCE7'];
-    String selectedColor = colors[0];
+
+    // 12 distinct colors
+    final allColors = [
+      '#DBEAFE', '#EDE9FE', '#FCE7F3', '#FFEDD5',
+      '#FEE2E2', '#DCFCE7', '#FEF9C3', '#CFFAFE',
+      '#FEE2CC', '#F3E8FF', '#D1FAE5', '#FFE4E6',
+    ];
+
+    String? selectedColor;
 
     showModalBottomSheet(
       context: context,
@@ -295,74 +319,112 @@ class _ListViewScreenState extends State<ListViewScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40, height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
-                ),
+      builder: (context) => StreamBuilder(
+        // Stream existing categories to know which colors are taken
+        stream: _firestore
+            .collection('categories')
+            .where('listId', isEqualTo: widget.listId)
+            .snapshots(),
+        builder: (context, AsyncSnapshot<QuerySnapshot> catSnapshot) {
+          final usedColors = catSnapshot.data?.docs
+              .map((d) => d['color'].toString())
+              .toList() ?? [];
+          final availableColors = allColors.where((c) => !usedColors.contains(c)).toList();
+
+          // Auto select first available color
+          selectedColor ??= availableColors.isNotEmpty ? availableColors.first : null;
+
+          return StatefulBuilder(
+            builder: (context, setSheetState) => Padding(
+              padding: EdgeInsets.only(
+                left: 20, right: 20, top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
-              const Text('New Category',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
-              const SizedBox(height: 16),
-              const Text('Category Name',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Dairy',
-                  hintStyle: TextStyle(color: AppColors.subtext),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text('Color',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
-              const SizedBox(height: 8),
-              Row(
-                children: colors.map((color) => GestureDetector(
-                  onTap: () => setSheetState(() => selectedColor = color),
-                  child: Container(
-                    width: 36, height: 36,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: Color(int.parse('0xFF${color.replaceAll('#', '')}')),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selectedColor == color ? AppColors.primary : Colors.transparent,
-                        width: 2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                )).toList(),
+                  const Text('New Category',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
+                  const SizedBox(height: 16),
+                  const Text('Category Name',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. Dairy',
+                      hintStyle: TextStyle(color: AppColors.subtext),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Color',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                  const SizedBox(height: 8),
+
+                  if (availableColors.isEmpty)
+                    const Text(
+                      'All colors are in use — delete a category to free up a color',
+                      style: TextStyle(fontSize: 12, color: AppColors.subtext),
+                    )
+                  else
+                  // 3 rows of 4 colors filling the width
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: availableColors.map((color) {
+                        final isSelected = selectedColor == color;
+                        final c = Color(int.parse('0xFF${color.replaceAll('#', '')}'));
+                        return GestureDetector(
+                          onTap: () => setSheetState(() => selectedColor = color),
+                          child: Container(
+                            width: (MediaQuery.of(context).size.width - 72) / 4,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: c,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected ? AppColors.primary : Colors.transparent,
+                                width: 2,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(Icons.check, size: 18, color: AppColors.dark)
+                                : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: availableColors.isEmpty ? null : () async {
+                      if (nameController.text.trim().isEmpty) return;
+                      if (selectedColor == null) return;
+                      await _firestore.collection('categories').add({
+                        'listId': widget.listId,
+                        'name': nameController.text.trim(),
+                        'color': selectedColor,
+                      });
+                      if (mounted) Navigator.pop(context);
+                    },
+                    child: const Text('Add Category'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () async {
-                  if (nameController.text.trim().isEmpty) return;
-                  await _firestore.collection('categories').add({
-                    'listId': widget.listId,
-                    'name': nameController.text.trim(),
-                    'color': selectedColor,
-                  });
-                  if (mounted) Navigator.pop(context);
-                },
-                child: const Text('Add Category'),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -380,6 +442,10 @@ class _ListViewScreenState extends State<ListViewScreen> {
         title: StreamBuilder(
           stream: _firestore.collection('lists').doc(widget.listId).snapshots(),
           builder: (context, AsyncSnapshot<DocumentSnapshot> snapshot) {
+            // Handle case where list has been deleted
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return const Text('');
+            }
             final name = snapshot.data?['name'] ?? 'List';
             return Text(name,
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark));
@@ -424,8 +490,21 @@ class _ListViewScreenState extends State<ListViewScreen> {
                   : activeItems.where((d) => d['categoryId'] == _selectedCategoryId).toList();
 
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (allItems.isNotEmpty && activeItems.isEmpty && completedItems.isNotEmpty) {
-                  _showAllCompletedDialog(completedItems);
+                if (allItems.isNotEmpty &&
+                    activeItems.isEmpty &&
+                    completedItems.isNotEmpty &&
+                    !_completedDialogShowing) {
+                  _firestore.collection('lists').doc(widget.listId).get().then((doc) {
+                    final data = doc.data() as Map<String, dynamic>?;
+                    final dismissed = data?['allCompletedDismissed'] ?? false;
+                    if (!dismissed && mounted) {
+                      setState(() => _completedDialogShowing = true);
+                      _showAllCompletedDialog(completedItems);
+                    }
+                  });
+                }
+                if (activeItems.isNotEmpty) {
+                  _completedDialogShowing = false;
                 }
               });
 
