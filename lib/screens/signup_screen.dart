@@ -141,7 +141,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     controller: _usernameController,
                     autocorrect: false,
                     decoration: const InputDecoration(
-                      hintText: 'e.g. toddles',
+                      hintText: 'e.g. Amanda',
                       hintStyle: TextStyle(color: AppColors.subtext),
                     ),
                     validator: (value) {

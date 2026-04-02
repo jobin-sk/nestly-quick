@@ -16,6 +16,7 @@ import 'services/auth_service.dart';
 import 'theme/colors.dart';
 import 'screens/friends_screen.dart';
 
+
 void main() async {
   // Ensure Flutter is initialized before Firebase
   WidgetsFlutterBinding.ensureInitialized();

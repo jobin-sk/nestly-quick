@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/colors.dart';
+import '../widgets/bottom_sheets/edit_item_sheet.dart';
 
 class ListViewScreen extends StatefulWidget {
   final String listId;
@@ -21,20 +22,19 @@ class _ListViewScreenState extends State<ListViewScreen> {
 
   String get _userId => _auth.currentUser!.uid;
 
-  // Marks an item as complete and updates Firestore
+  // Marks an item as complete
   Future<void> _completeItem(String itemId) async {
     await _firestore.collection('items').doc(itemId).update({
       'isComplete': true,
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    // Update the list's lastEditedBy and updatedAt
     await _firestore.collection('lists').doc(widget.listId).update({
       'lastEditedBy': _userId,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
-  // Marks a completed item as incomplete and moves it back up
+  // Marks a completed item as incomplete
   Future<void> _uncompleteItem(String itemId) async {
     await _firestore.collection('items').doc(itemId).update({
       'isComplete': false,
@@ -47,14 +47,10 @@ class _ListViewScreenState extends State<ListViewScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'Delete Item?',
-          style: TextStyle(color: AppColors.dark, fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          '"$itemName" will be permanently removed from this list.',
-          style: const TextStyle(color: AppColors.subtext, fontSize: 14),
-        ),
+        title: const Text('Delete Item?',
+            style: TextStyle(color: AppColors.dark, fontSize: 16, fontWeight: FontWeight.w700)),
+        content: Text('"$itemName" will be permanently removed from this list.',
+            style: const TextStyle(color: AppColors.subtext, fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -77,7 +73,7 @@ class _ListViewScreenState extends State<ListViewScreen> {
     }
   }
 
-  // Clears all completed items from the list
+  // Clears all completed items
   Future<void> _clearCompleted(List<DocumentSnapshot> completedItems) async {
     final batch = _firestore.batch();
     for (final item in completedItems) {
@@ -91,18 +87,13 @@ class _ListViewScreenState extends State<ListViewScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          '🎉 Everything\'s Done!',
-          style: TextStyle(color: AppColors.dark, fontSize: 16, fontWeight: FontWeight.w700),
-          textAlign: TextAlign.center,
-        ),
-        content: const Text(
-          'All items are completed. What would you like to do?',
-          style: TextStyle(color: AppColors.subtext, fontSize: 14),
-          textAlign: TextAlign.center,
-        ),
+        title: const Text('🎉 Everything\'s Done!',
+            style: TextStyle(color: AppColors.dark, fontSize: 16, fontWeight: FontWeight.w700),
+            textAlign: TextAlign.center),
+        content: const Text('All items are completed. What would you like to do?',
+            style: TextStyle(color: AppColors.subtext, fontSize: 14),
+            textAlign: TextAlign.center),
         actions: [
-          // Clear contents but keep the list
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
@@ -110,7 +101,6 @@ class _ListViewScreenState extends State<ListViewScreen> {
             },
             child: const Text('Clear List Contents'),
           ),
-          // Delete the entire list
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
@@ -121,16 +111,25 @@ class _ListViewScreenState extends State<ListViewScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
             child: const Text('Delete Entire List'),
           ),
-          // Do nothing
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Keep for Reference',
-              style: TextStyle(color: AppColors.subtext),
-            ),
+            child: const Text('Keep for Reference',
+                style: TextStyle(color: AppColors.subtext)),
           ),
         ],
       ),
+    );
+  }
+
+  // Opens the edit item bottom sheet when an item is tapped
+  void _showEditItemSheet(BuildContext context, DocumentSnapshot item, List<DocumentSnapshot> categories) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => EditItemSheet(item: item, categories: categories),
     );
   }
 
@@ -157,7 +156,6 @@ class _ListViewScreenState extends State<ListViewScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Sheet handle
               Center(
                 child: Container(
                   width: 40, height: 4,
@@ -168,16 +166,11 @@ class _ListViewScreenState extends State<ListViewScreen> {
                   ),
                 ),
               ),
-              const Text(
-                'Add Item',
-                style: TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark,
-                ),
-              ),
+              const Text('Add Item',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
               const SizedBox(height: 16),
-
-              // Item name field
-              const Text('Item Name', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+              const Text('Item Name',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
               const SizedBox(height: 6),
               TextField(
                 controller: nameController,
@@ -188,9 +181,8 @@ class _ListViewScreenState extends State<ListViewScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Quantity field (optional)
-              const Text('Quantity (optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+              const Text('Quantity (optional)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
               const SizedBox(height: 6),
               TextField(
                 controller: quantityController,
@@ -200,9 +192,8 @@ class _ListViewScreenState extends State<ListViewScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Category dropdown (optional) — shows existing categories for this list
-              const Text('Category (optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+              const Text('Category (optional)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
                 value: selectedCategoryId,
@@ -217,12 +208,11 @@ class _ListViewScreenState extends State<ListViewScreen> {
                   ),
                 ),
                 items: [
-                  // Sticky option to add a new category
                   const DropdownMenuItem<String>(
                     value: '__new__',
-                    child: Text('+ Add new category', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                    child: Text('+ Add new category',
+                        style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
                   ),
-                  // Existing categories for this list
                   ...categories.map((cat) => DropdownMenuItem<String>(
                     value: cat.id,
                     child: Row(
@@ -250,9 +240,8 @@ class _ListViewScreenState extends State<ListViewScreen> {
                 },
               ),
               const SizedBox(height: 12),
-
-              // Notes field (optional)
-              const Text('Notes (optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+              const Text('Notes (optional)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
               const SizedBox(height: 6),
               TextField(
                 controller: notesController,
@@ -262,21 +251,16 @@ class _ListViewScreenState extends State<ListViewScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Add item button
               ElevatedButton(
                 onPressed: () async {
                   if (nameController.text.trim().isEmpty) return;
-                  // Write item to Firestore items collection
                   await _firestore.collection('items').add({
                     'listId': widget.listId,
                     'name': nameController.text.trim(),
                     'quantity': quantityController.text.trim().isEmpty
-                        ? null
-                        : quantityController.text.trim(),
+                        ? null : quantityController.text.trim(),
                     'notes': notesController.text.trim().isEmpty
-                        ? null
-                        : notesController.text.trim(),
+                        ? null : notesController.text.trim(),
                     'categoryId': selectedCategoryId,
                     'isComplete': false,
                     'addedBy': _userId,
@@ -298,11 +282,11 @@ class _ListViewScreenState extends State<ListViewScreen> {
     );
   }
 
-  // Bottom sheet to add a new category to this list
+  // Bottom sheet to add a new category
   void _showAddCategorySheet(BuildContext context) {
     final nameController = TextEditingController();
-    // Default category colors to pick from
-    final colors = ['#DBEAFE', '#FEF9C3', '#FCE7F3', '#DCFCE7', '#FFE4E6', '#FEF3C7'];
+    // Updated to more distinct colors
+    final colors = ['#DBEAFE', '#EDE9FE', '#FCE7F3', '#FFEDD5', '#FEE2E2', '#DCFCE7'];
     String selectedColor = colors[0];
 
     showModalBottomSheet(
@@ -328,9 +312,11 @@ class _ListViewScreenState extends State<ListViewScreen> {
                   decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
                 ),
               ),
-              const Text('New Category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
+              const Text('New Category',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
               const SizedBox(height: 16),
-              const Text('Category Name', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+              const Text('Category Name',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
               const SizedBox(height: 6),
               TextField(
                 controller: nameController,
@@ -341,9 +327,9 @@ class _ListViewScreenState extends State<ListViewScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('Color', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+              const Text('Color',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
               const SizedBox(height: 8),
-              // Color picker row
               Row(
                 children: colors.map((color) => GestureDetector(
                   onTap: () => setSheetState(() => selectedColor = color),
@@ -388,28 +374,22 @@ class _ListViewScreenState extends State<ListViewScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.dark),
-          onPressed: () => context.go('/dashboard'),
+          // Use context.pop() so it goes back to wherever you came from
+          onPressed: () => context.pop(),
         ),
-        // Stream the list name so it updates in real time
         title: StreamBuilder(
           stream: _firestore.collection('lists').doc(widget.listId).snapshots(),
           builder: (context, AsyncSnapshot<DocumentSnapshot> snapshot) {
             final name = snapshot.data?['name'] ?? 'List';
-            return Text(
-              name,
-              style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark,
-              ),
-            );
+            return Text(name,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark));
           },
         ),
         actions: [
-          // Edit list button
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: AppColors.dark),
             onPressed: () => _showAddCategorySheet(context),
           ),
-          // Share list button
           IconButton(
             icon: const Icon(Icons.link, color: AppColors.dark),
             onPressed: () => context.push('/dashboard/list/${widget.listId}/share'),
@@ -417,7 +397,6 @@ class _ListViewScreenState extends State<ListViewScreen> {
         ],
       ),
       body: StreamBuilder(
-        // Stream categories for this list
         stream: _firestore
             .collection('categories')
             .where('listId', isEqualTo: widget.listId)
@@ -426,7 +405,6 @@ class _ListViewScreenState extends State<ListViewScreen> {
           final categories = catSnapshot.data?.docs ?? [];
 
           return StreamBuilder(
-            // Stream all items for this list
             stream: _firestore
                 .collection('items')
                 .where('listId', isEqualTo: widget.listId)
@@ -438,17 +416,13 @@ class _ListViewScreenState extends State<ListViewScreen> {
               }
 
               final allItems = itemSnapshot.data?.docs ?? [];
-
-              // Split items into active and completed
               final activeItems = allItems.where((d) => d['isComplete'] == false).toList();
               final completedItems = allItems.where((d) => d['isComplete'] == true).toList();
 
-              // Apply category filter if one is selected
               final filteredActive = _selectedCategoryId == null
                   ? activeItems
                   : activeItems.where((d) => d['categoryId'] == _selectedCategoryId).toList();
 
-              // Check if all items are done — show prompt if so
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (allItems.isNotEmpty && activeItems.isEmpty && completedItems.isNotEmpty) {
                   _showAllCompletedDialog(completedItems);
@@ -457,7 +431,7 @@ class _ListViewScreenState extends State<ListViewScreen> {
 
               return Column(
                 children: [
-                  // Category filter chips row
+                  // Category filter chips
                   if (categories.isNotEmpty)
                     SizedBox(
                       height: 44,
@@ -465,7 +439,6 @@ class _ListViewScreenState extends State<ListViewScreen> {
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         children: [
-                          // All chip
                           GestureDetector(
                             onTap: () => setState(() => _selectedCategoryId = null),
                             child: Container(
@@ -475,17 +448,13 @@ class _ListViewScreenState extends State<ListViewScreen> {
                                 color: _selectedCategoryId == null ? AppColors.primary : AppColors.primaryLighter,
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: Text(
-                                'All',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: _selectedCategoryId == null ? Colors.white : AppColors.primary,
-                                ),
-                              ),
+                              child: Text('All',
+                                  style: TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w500,
+                                    color: _selectedCategoryId == null ? Colors.white : AppColors.primary,
+                                  )),
                             ),
                           ),
-                          // One chip per category
                           ...categories.map((cat) {
                             final isSelected = _selectedCategoryId == cat.id;
                             final color = Color(int.parse('0xFF${cat['color'].toString().replaceAll('#', '')}'));
@@ -499,10 +468,8 @@ class _ListViewScreenState extends State<ListViewScreen> {
                                   borderRadius: BorderRadius.circular(20),
                                   border: isSelected ? Border.all(color: AppColors.primary, width: 1.5) : null,
                                 ),
-                                child: Text(
-                                  cat['name'],
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.dark),
-                                ),
+                                child: Text(cat['name'],
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.dark)),
                               ),
                             );
                           }),
@@ -519,22 +486,25 @@ class _ListViewScreenState extends State<ListViewScreen> {
                         children: [
                           Icon(Icons.add_shopping_cart, size: 64, color: AppColors.border),
                           const SizedBox(height: 16),
-                          const Text('No items yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.subtext)),
+                          const Text('No items yet',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.subtext)),
                           const SizedBox(height: 8),
-                          const Text('Tap + to add your first item', style: TextStyle(fontSize: 14, color: AppColors.subtext)),
+                          const Text('Tap + to add your first item',
+                              style: TextStyle(fontSize: 14, color: AppColors.subtext)),
                         ],
                       ),
                     )
                         : ListView(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                       children: [
-                        // Active items
+                        // Active items — tappable to edit
                         ...filteredActive.map((item) => _ItemRow(
                           key: ValueKey(item.id),
                           item: item,
                           categories: categories,
                           onComplete: () => _completeItem(item.id),
                           onDelete: () => _deleteItem(item.id, item['name']),
+                          onTap: () => _showEditItemSheet(context, item, categories),
                         )),
 
                         // Completed section
@@ -555,20 +525,21 @@ class _ListViewScreenState extends State<ListViewScreen> {
                               ],
                             ),
                           ),
-                          // Clear completed button
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: () => _clearCompleted(completedItems),
-                              child: const Text('Clear completed', style: TextStyle(color: AppColors.danger, fontSize: 12)),
-                            ),
-                          ),
                           // Completed items
                           ...completedItems.map((item) => _CompletedItemRow(
                             key: ValueKey(item.id),
                             item: item,
                             onUncomplete: () => _uncompleteItem(item.id),
                           )),
+                          // Clear completed button at the bottom of completed section
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () => _clearCompleted(completedItems),
+                              child: const Text('Clear completed',
+                                  style: TextStyle(color: AppColors.danger, fontSize: 12)),
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -579,13 +550,10 @@ class _ListViewScreenState extends State<ListViewScreen> {
           );
         },
       ),
-
-      // FAB opens add item sheet
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         onPressed: () {
-          // Get current categories to pass into the sheet
           _firestore
               .collection('categories')
               .where('listId', isEqualTo: widget.listId)
@@ -598,12 +566,13 @@ class _ListViewScreenState extends State<ListViewScreen> {
   }
 }
 
-// Active item row with swipe gestures
+// Active item row with swipe gestures and tap to edit
 class _ItemRow extends StatelessWidget {
   final DocumentSnapshot item;
   final List<DocumentSnapshot> categories;
   final VoidCallback onComplete;
   final VoidCallback onDelete;
+  final VoidCallback onTap;
 
   const _ItemRow({
     super.key,
@@ -611,142 +580,114 @@ class _ItemRow extends StatelessWidget {
     required this.categories,
     required this.onComplete,
     required this.onDelete,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Find the category for this item to get the tint color
     final category = categories.where((c) => c.id == item['categoryId']).firstOrNull;
     Color tintColor = AppColors.background;
     if (category != null) {
       tintColor = Color(int.parse('0xFF${category['color'].toString().replaceAll('#', '')}'));
     }
-
-    // Get the initials of whoever added this item
     final addedBy = item['addedBy'] ?? '';
 
     return Dismissible(
       key: ValueKey(item.id),
-      // Swipe right to complete — green background with check icon
       background: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: Colors.green.shade100,
-          borderRadius: BorderRadius.circular(10),
-        ),
+        decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(10)),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 20),
         child: const Icon(Icons.check_circle_outline, color: Colors.green),
       ),
-      // Swipe left to delete — red background with delete icon
       secondaryBackground: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: AppColors.dangerLight,
-          borderRadius: BorderRadius.circular(10),
-        ),
+        decoration: BoxDecoration(color: AppColors.dangerLight, borderRadius: BorderRadius.circular(10)),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         child: Icon(Icons.delete_outline, color: AppColors.danger),
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          // Swipe right — complete the item, don't actually dismiss
           onComplete();
           return false;
         } else {
-          // Swipe left — show delete confirmation
           onDelete();
           return false;
         }
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: tintColor,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border.withOpacity(0.5)),
-        ),
-        child: Row(
-          children: [
-            // Unchecked circle indicator
-            Container(
-              width: 20, height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border, width: 1.5),
+      // Tap item row to open edit sheet
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: tintColor,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border.withOpacity(0.5)),
+          ),
+          child: Row(
+            children: [
+              // Circle indicator with visible border
+              Container(
+                width: 20, height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.subtext.withOpacity(0.4), width: 1.5),
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Item name with optional quantity
-                  Text(
-                    item['quantity'] != null
-                        ? '${item['name']} ${item['quantity']}'
-                        : item['name'],
-                    style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.dark,
-                    ),
-                  ),
-                  // Optional notes
-                  if (item['notes'] != null)
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      item['notes'],
-                      style: const TextStyle(fontSize: 12, color: AppColors.subtext),
+                      item['quantity'] != null
+                          ? '${item['name']} ${item['quantity']}'
+                          : item['name'],
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.dark),
                     ),
-                ],
+                    if (item['notes'] != null)
+                      Text(item['notes'],
+                          style: const TextStyle(fontSize: 12, color: AppColors.subtext)),
+                  ],
+                ),
               ),
-            ),
-            // Added by initials
-            _InitialsWidget(userId: addedBy),
-          ],
+              _InitialsWidget(userId: addedBy),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// Completed item row — swipe left to uncomplete
+// Completed item row
 class _CompletedItemRow extends StatelessWidget {
   final DocumentSnapshot item;
   final VoidCallback onUncomplete;
 
-  const _CompletedItemRow({
-    super.key,
-    required this.item,
-    required this.onUncomplete,
-  });
+  const _CompletedItemRow({super.key, required this.item, required this.onUncomplete});
 
   @override
   Widget build(BuildContext context) {
     return Dismissible(
       key: ValueKey('completed_${item.id}'),
-      // Swipe left to uncomplete — purple background
       secondaryBackground: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: AppColors.primaryLight,
-          borderRadius: BorderRadius.circular(10),
-        ),
+        decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         child: const Icon(Icons.undo, color: AppColors.primary),
       ),
       background: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: AppColors.primaryLight,
-          borderRadius: BorderRadius.circular(10),
-        ),
+        decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
       ),
       confirmDismiss: (direction) async {
-        if (direction == DismissDirection.endToStart) {
-          onUncomplete();
-        }
+        if (direction == DismissDirection.endToStart) onUncomplete();
         return false;
       },
       child: Opacity(
@@ -761,13 +702,9 @@ class _CompletedItemRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Checked circle
               Container(
                 width: 20, height: 20,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary,
-                ),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.primary),
                 child: const Icon(Icons.check, size: 13, color: Colors.white),
               ),
               const SizedBox(width: 10),
@@ -777,8 +714,7 @@ class _CompletedItemRow extends StatelessWidget {
                       ? '${item['name']} ${item['quantity']}'
                       : item['name'],
                   style: const TextStyle(
-                    fontSize: 14,
-                    color: AppColors.subtext,
+                    fontSize: 14, color: AppColors.subtext,
                     decoration: TextDecoration.lineThrough,
                   ),
                 ),
@@ -791,7 +727,7 @@ class _CompletedItemRow extends StatelessWidget {
   }
 }
 
-// Fetches and displays the initials of the user who added an item
+// Fetches and displays the initial of the user who added an item
 class _InitialsWidget extends StatelessWidget {
   final String userId;
   const _InitialsWidget({required this.userId});
@@ -801,25 +737,20 @@ class _InitialsWidget extends StatelessWidget {
     return FutureBuilder(
       future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
       builder: (context, AsyncSnapshot<DocumentSnapshot> snapshot) {
-        final username = snapshot.data?['username'] ?? '?';
-        final initials = username.length >= 1
-            ? username.substring(0, 2).toUpperCase()
-            : username.toUpperCase();
+        final data = snapshot.data?.data() as Map<String, dynamic>?;
+        final username = data?['username'] ?? '?';
+        final avatarColor = data?['avatarColor'] ?? '#7C3AED';
+        // Single letter initial
+        final initial = username.isNotEmpty
+            ? username.substring(0, 1).toUpperCase()
+            : '?';
+        final color = Color(int.parse('0xFF${avatarColor.replaceAll('#', '')}'));
         return Container(
           width: 28, height: 28,
-          decoration: BoxDecoration(
-            color: AppColors.primaryLight,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           child: Center(
-            child: Text(
-              initials,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primary,
-              ),
-            ),
+            child: Text(initial,
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
           ),
         );
       },
