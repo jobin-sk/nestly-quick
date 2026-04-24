@@ -2,43 +2,52 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+//handles everything auth, signup login logout and password reset
+//extends ChangeNotifier so any screen listening to this can rebuild when auth state changes
 class AuthService extends ChangeNotifier {
-  // Firebase Auth and Firestore instances
+  //firebase auth handles credential stuff email password sessions
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  //firestore is where we store the user info (sername since firebase auth doesnt hold that
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // The currently logged in user — null if not logged in
+  //getter that returns the logged in user or null if not logged in
+  //used by the router redirect in main.dart to decide if user should see login or dashboard
   User? get currentUser => _auth.currentUser;
 
-  // Stream that Firebase uses to notify the app when auth state changes
-  // e.g. user logs in, logs out, or session expires
+  //stream that goes whenever auth state changes login logout session expire !
+  //not hooked up to the router yet which is why the redirect bug exists fix this one day
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Signs up a new user with email, password, and username
-  // Creates the Firebase Auth account and writes the user document to Firestore
+  //signs up a new user
+  //returns null on success or a string error message on failure
+  //first it create the firebase auth account then write the user doc to firestore
   Future<String?> signUp({
     required String email,
     required String password,
     required String username,
   }) async {
     try {
-      // Check if username is already taken in Firestore
+      //check if username already exists before accounts createdd
+      //firebase auth handles email uniqueness automatically but usernames are our own thing
       final usernameQuery = await _firestore
           .collection('users')
           .where('username', isEqualTo: username.trim())
           .get();
 
+      //if the query found any docs the username is already in use
       if (usernameQuery.docs.isNotEmpty) {
         return 'Username already taken — please choose another';
       }
 
-      // Create the Firebase Auth account
+      //create the firebase auth account this handles password hashing internally
+      //we never store the password anywhere ourselves all firebase
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
 
-      // Write the user document to Firestore users collection
+      //write the user doc to firestore using the uid from firebase auth as the doc id
+      //this links the auth account to the firestore user record
       await _firestore
           .collection('users')
           .doc(credential.user!.uid)
@@ -48,9 +57,11 @@ class AuthService extends ChangeNotifier {
         'username': username.trim(),
       });
 
-      return null; // null means success
+      //null means no error signup worked
+      return null;
     } on FirebaseAuthException catch (e) {
-      // Return a human readable error message based on Firebase error code
+      //firebase throws these exceptions with error codes we can map to friendly messages
+      //without this the user would see a scary raw error like FIREBASE_AUTH/INVALID_EMAIL think we fixed it
       switch (e.code) {
         case 'email-already-in-use':
           return 'An account already exists with this email';
@@ -64,17 +75,20 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // Logs in an existing user with email and password
+  //logs in an existing user
+  //same pattern as signup null on success or error string on failure
   Future<String?> signIn({
     required String email,
     required String password,
   }) async {
     try {
+      //firebase checks the email password combo and sets up a session
+      //if this succeeds currentUser will have a value after this line runs
       await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
-      return null; // null means success
+      return null;
     } on FirebaseAuthException catch (e) {
       switch (e.code) {
         case 'user-not-found':
@@ -83,6 +97,7 @@ class AuthService extends ChangeNotifier {
           return 'Incorrect password — please try again';
         case 'invalid-email':
           return 'Please enter a valid email address';
+      //invalid credential is the newer generic error firebase uses instead of wrong password
         case 'invalid-credential':
           return 'Incorrect email or password';
         default:
@@ -91,11 +106,12 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // Sends a password reset email via Firebase
+  //sends a password reset email through firebase
+  //firebase handles the whole email template and reset link
   Future<String?> sendPasswordReset({required String email}) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
-      return null; // null means success
+      return null;
     } on FirebaseAuthException catch (e) {
       switch (e.code) {
         case 'user-not-found':
@@ -108,7 +124,9 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // Logs out the current user and clears their session
+  //logs out the current user and clears the session
+  //notifyListeners tells any widget listening to this service to rebuild
+  //thats how we make sure the redirect eventually kicks in after logout
   Future<void> signOut() async {
     await _auth.signOut();
     notifyListeners();

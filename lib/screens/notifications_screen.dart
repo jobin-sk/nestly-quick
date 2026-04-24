@@ -4,10 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/colors.dart';
 
+//shows the last 7 days of notifications for the current user
+//reads live from firestore so new ones show up without refreshing
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
-  // Returns the left border color based on notification type
+  //returns the left border color based on notification type
+  //gives each type a quick visual cue without needing to read the title
   Color _getBorderColor(String type) {
     switch (type) {
       case 'list_shared':
@@ -23,7 +26,7 @@ class NotificationsScreen extends StatelessWidget {
     }
   }
 
-  // Returns a human readable title based on notification type
+  //turns the raw type string from firestore into a readable title
   String _getTitle(String type) {
     switch (type) {
       case 'list_shared':
@@ -41,7 +44,7 @@ class NotificationsScreen extends StatelessWidget {
     }
   }
 
-  // Formats the timestamp into a readable string like "2 hours ago"
+  //formats the firestore timestamp into relative time like "2h ago"
   String _formatTime(Timestamp? timestamp) {
     if (timestamp == null) return '';
     final now = DateTime.now();
@@ -55,7 +58,8 @@ class NotificationsScreen extends StatelessWidget {
     return '${diff.inDays} days ago';
   }
 
-  // Clears all notifications for the current user
+  //wipes every notification for this user in one go
+  //batch lets us delete multiple docs as a single atomic write instead of one network call per doc
   Future<void> _clearAll(String userId, List<DocumentSnapshot> docs) async {
     final firestore = FirebaseFirestore.instance;
     final batch = firestore.batch();
@@ -65,15 +69,14 @@ class NotificationsScreen extends StatelessWidget {
     await batch.commit();
   }
 
-  // Marks a notification as read and navigates to the relevant list
+  //marks a notification as read and jumps to the list it points at if there is one
   Future<void> _handleTap(BuildContext context, DocumentSnapshot doc) async {
-    // Mark as read
     await FirebaseFirestore.instance
         .collection('notifications')
         .doc(doc.id)
         .update({'isRead': true});
 
-    // Navigate to the referenced list if there is one
+    //referenceId points to the related list so user can jump straight to it
     final referenceId = doc['referenceId'];
     if (referenceId != null && context.mounted) {
       context.push('/dashboard/list/$referenceId');
@@ -84,7 +87,7 @@ class NotificationsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
 
-    // Calculate the cutoff date — notifications older than 7 days are hidden
+    //cutoff is 7 days ago. anything older gets filtered out of the query
     final cutoff = Timestamp.fromDate(
       DateTime.now().subtract(const Duration(days: 7)),
     );
@@ -97,10 +100,10 @@ class NotificationsScreen extends StatelessWidget {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.dark),
         ),
         actions: [
-          // Clear all button
+          //placeholder clear all in the app bar. real one is at the bottom since it needs the docs list
           TextButton(
             onPressed: () async {
-              // Will be wired up once we have the docs list
+              //gets wired up once we have the docs list
             },
             child: const Text(
               'Clear all',
@@ -109,8 +112,9 @@ class NotificationsScreen extends StatelessWidget {
           ),
         ],
       ),
+      //streambuilder listens to firestore and auto rebuilds when data changes
+      //this is what makes notifications appear live without the user refreshing
       body: StreamBuilder(
-        // Stream notifications for this user created within the last 7 days
         stream: FirebaseFirestore.instance
             .collection('notifications')
             .where('userId', isEqualTo: userId)
@@ -118,15 +122,17 @@ class NotificationsScreen extends StatelessWidget {
             .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
+          //spinner while firestore is loading for the first time
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
             );
           }
 
+          //?? [] means if snapshot.data is null default to empty list instead of crashing
           final docs = snapshot.data?.docs ?? [];
 
-          // Empty state
+          //empty state when there are no notifications
           if (docs.isEmpty) {
             return Center(
               child: Column(
@@ -151,7 +157,7 @@ class NotificationsScreen extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Last 7 days label
+              //small header above the list
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
                 child: Text(
@@ -165,7 +171,8 @@ class NotificationsScreen extends StatelessWidget {
                 ),
               ),
 
-              // Notification list
+              //scrollable list of notification cards
+              //expanded takes up all remaining vertical space so the list scrolls instead of overflowing
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
@@ -182,15 +189,16 @@ class NotificationsScreen extends StatelessWidget {
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
-                          // Unread notifications have a slightly tinted background
+                          //unread cards get a subtle purple tint to stand out from read ones
                           color: isRead ? AppColors.background : AppColors.primaryLighter,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppColors.border),
                         ),
+                        //IntrinsicHeight forces the colored strip to match the cards height
                         child: IntrinsicHeight(
                           child: Row(
                             children: [
-                              // Colored left border strip based on notification type
+                              //colored strip on the left side of the card
                               Container(
                                 width: 4,
                                 decoration: BoxDecoration(
@@ -207,10 +215,10 @@ class NotificationsScreen extends StatelessWidget {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      // Notification title
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
+                                          //title goes bold when unread so it stands out
                                           Text(
                                             _getTitle(type),
                                             style: TextStyle(
@@ -219,7 +227,7 @@ class NotificationsScreen extends StatelessWidget {
                                               color: AppColors.dark,
                                             ),
                                           ),
-                                          // Unread dot indicator
+                                          //purple dot on unread notifications
                                           if (!isRead)
                                             Container(
                                               width: 8,
@@ -232,7 +240,6 @@ class NotificationsScreen extends StatelessWidget {
                                         ],
                                       ),
                                       const SizedBox(height: 4),
-                                      // Notification message
                                       Text(
                                         message,
                                         style: const TextStyle(
@@ -241,7 +248,6 @@ class NotificationsScreen extends StatelessWidget {
                                         ),
                                       ),
                                       const SizedBox(height: 6),
-                                      // Timestamp
                                       Text(
                                         _formatTime(timestamp),
                                         style: const TextStyle(
@@ -262,7 +268,7 @@ class NotificationsScreen extends StatelessWidget {
                 ),
               ),
 
-              // Clear all button at bottom — wired to actual docs
+              //real clear all button at the bottom. has the docs list so it actually works
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: TextButton(

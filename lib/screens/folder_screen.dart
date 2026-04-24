@@ -4,6 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/colors.dart';
 
+//folder screen shows all lists inside a single folder
+//user gets here by tapping a folder card on the dashboard
+//basically a scoped down dashboard that only shows whats in this folder
 class FolderScreen extends StatefulWidget {
   final String folderId;
   const FolderScreen({super.key, required this.folderId});
@@ -18,7 +21,8 @@ class _FolderScreenState extends State<FolderScreen> {
 
   String get _userId => _auth.currentUser!.uid;
 
-  // Shows long press menu for a list inside the folder
+  //long press menu on a list card. rename, pin, delete
+  //same pattern as dashboard_screens list menu
   void _showListMenu(BuildContext context, String listId, String listName, bool isPinned) {
     showModalBottomSheet(
       context: context,
@@ -31,6 +35,7 @@ class _FolderScreenState extends State<FolderScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            //grey swipe bar at top of sheet
             Center(
               child: Container(
                 width: 40, height: 4,
@@ -42,7 +47,6 @@ class _FolderScreenState extends State<FolderScreen> {
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.dark)),
             const SizedBox(height: 16),
 
-            // Rename option
             ListTile(
               leading: const Icon(Icons.edit_outlined, color: AppColors.primary),
               title: const Text('Rename', style: TextStyle(fontSize: 15, color: AppColors.dark)),
@@ -52,7 +56,7 @@ class _FolderScreenState extends State<FolderScreen> {
               },
             ),
 
-            // Pin option
+            //pin icon changes between filled and outlined based on current state
             ListTile(
               leading: Icon(
                 isPinned ? Icons.push_pin : Icons.push_pin_outlined,
@@ -64,13 +68,14 @@ class _FolderScreenState extends State<FolderScreen> {
               ),
               onTap: () async {
                 Navigator.pop(context);
+                //flip the pinned state in firestore
                 await _firestore.collection('lists').doc(listId).update({
                   'isPinned': !isPinned,
                 });
               },
             ),
 
-            // Delete option
+            //red for destructive action so user knows this is serious
             ListTile(
               leading: Icon(Icons.delete_outline, color: AppColors.danger),
               title: Text('Delete List', style: TextStyle(fontSize: 15, color: AppColors.danger)),
@@ -85,8 +90,9 @@ class _FolderScreenState extends State<FolderScreen> {
     );
   }
 
-  // Bottom sheet to rename a list
+  //rename sheet for a list inside the folder
   void _showRenameListSheet(BuildContext context, String listId, String currentName) {
+    //pre fill with current name so user only has to edit
     final nameController = TextEditingController(text: currentName);
     showModalBottomSheet(
       context: context,
@@ -95,6 +101,7 @@ class _FolderScreenState extends State<FolderScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => Padding(
+        //viewInsets.bottom keeps text field above keyboard
         padding: EdgeInsets.only(
           left: 20, right: 20, top: 20,
           bottom: MediaQuery.of(context).viewInsets.bottom + 20,
@@ -138,7 +145,8 @@ class _FolderScreenState extends State<FolderScreen> {
     );
   }
 
-  // Deletes a list and all its contents
+  //delete a single list plus all its items and categories
+  //same batch pattern as dashboard_screens delete. atomic so no orphans if network drops
   Future<void> _deleteList(BuildContext context, String listId, String listName) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -163,16 +171,21 @@ class _FolderScreenState extends State<FolderScreen> {
 
     if (confirmed == true) {
       final batch = _firestore.batch();
+      //delete items, categories, then the list itself in one atomic write
       final items = await _firestore.collection('items').where('listId', isEqualTo: listId).get();
-      for (final item in items.docs) batch.delete(item.reference);
+      for (final item in items.docs) {
+        batch.delete(item.reference);
+      }
       final categories = await _firestore.collection('categories').where('listId', isEqualTo: listId).get();
-      for (final cat in categories.docs) batch.delete(cat.reference);
+      for (final cat in categories.docs) {
+        batch.delete(cat.reference);
+      }
       batch.delete(_firestore.collection('lists').doc(listId));
       await batch.commit();
     }
   }
 
-  // Opens bottom sheet to edit folder name or delete it
+  //edit folder sheet. lets user rename the folder or delete it entirely
   void _showEditFolderSheet(BuildContext context, String currentName, List<DocumentSnapshot> lists) {
     final nameController = TextEditingController(text: currentName);
     showModalBottomSheet(
@@ -222,6 +235,7 @@ class _FolderScreenState extends State<FolderScreen> {
               child: const Text('Save'),
             ),
             const SizedBox(height: 12),
+            //delete folder button in outlined style so its less aggressive than solid red
             OutlinedButton(
               onPressed: () {
                 Navigator.pop(context);
@@ -239,7 +253,8 @@ class _FolderScreenState extends State<FolderScreen> {
     );
   }
 
-  // Confirmation before deleting folder and all contents
+  //confirm popup before wiping folder and all its lists
+  //shows the list count so user knows exactly what theyre about to destroy
   void _showDeleteConfirmation(BuildContext context, String folderName, List<DocumentSnapshot> lists) {
     final listCount = lists.length;
     showDialog(
@@ -247,6 +262,7 @@ class _FolderScreenState extends State<FolderScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Delete Folder?',
             style: TextStyle(color: AppColors.dark, fontSize: 16, fontWeight: FontWeight.w700)),
+        //pluralize based on count so it reads naturally
         content: Text(
           'This will permanently delete "$folderName" and all $listCount ${listCount == 1 ? 'list' : 'lists'} inside it. This cannot be undone.',
           style: const TextStyle(color: AppColors.subtext, fontSize: 14),
@@ -269,22 +285,31 @@ class _FolderScreenState extends State<FolderScreen> {
     );
   }
 
-  // Deletes all lists, items, categories, and the folder itself
+  //cascading delete. nukes every list in the folder plus all their items and categories, then the folder itself
+  //all in one batch so its atomic, and jumps back to dashboard since this folder wont exist anymore
   Future<void> _deleteFolderAndContents(List<DocumentSnapshot> lists) async {
     final batch = _firestore.batch();
+    //loop each list. for each one delete its items, its categories, then the list
     for (final list in lists) {
       final items = await _firestore.collection('items').where('listId', isEqualTo: list.id).get();
-      for (final item in items.docs) batch.delete(item.reference);
+      for (final item in items.docs) {
+        batch.delete(item.reference);
+      }
       final categories = await _firestore.collection('categories').where('listId', isEqualTo: list.id).get();
-      for (final cat in categories.docs) batch.delete(cat.reference);
+      for (final cat in categories.docs) {
+        batch.delete(cat.reference);
+      }
       batch.delete(list.reference);
     }
+    //finally delete the folder itself
     batch.delete(_firestore.collection('folders').doc(widget.folderId));
     await batch.commit();
+    //go back to dashboard since the screen we were on doesnt exist anymore
     if (mounted) context.go('/dashboard');
   }
 
-  // Bottom sheet to create a new list inside this folder
+  //create list sheet. key difference from dashboards version is this auto assigns the folderId
+  //so the new list shows up inside this folder instead of on the dashboard
   void _showCreateListSheet(BuildContext context) {
     final nameController = TextEditingController();
     showModalBottomSheet(
@@ -327,6 +352,7 @@ class _FolderScreenState extends State<FolderScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameController.text.trim().isEmpty) return;
+                //folderId pre set to this folder so the new list ends up here
                 await _firestore.collection('lists').add({
                   'name': nameController.text.trim(),
                   'ownerId': _userId,
@@ -349,6 +375,7 @@ class _FolderScreenState extends State<FolderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    //nested streambuilders same as dashboard. outer gets folder doc for name, inner gets lists inside it
     return StreamBuilder(
       stream: _firestore.collection('folders').doc(widget.folderId).snapshots(),
       builder: (context, AsyncSnapshot<DocumentSnapshot> folderSnapshot) {
@@ -362,7 +389,7 @@ class _FolderScreenState extends State<FolderScreen> {
           builder: (context, AsyncSnapshot<QuerySnapshot> listSnapshot) {
             final allLists = listSnapshot.data?.docs ?? [];
 
-            // Sort pinned lists to top
+            //split into pinned and unpinned buckets then concat so pinned show up first
             final pinnedLists = allLists.where((d) {
               final data = d.data() as Map<String, dynamic>?;
               return data?['isPinned'] == true;
@@ -378,11 +405,13 @@ class _FolderScreenState extends State<FolderScreen> {
               appBar: AppBar(
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back, color: AppColors.dark),
+                  //go not pop because we want to guarantee we land on dashboard even if navigation got weird
                   onPressed: () => context.go('/dashboard'),
                 ),
                 title: Text('📁 $folderName',
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
                 actions: [
+                  //pencil icon opens the edit folder sheet
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, color: AppColors.dark),
                     onPressed: () => _showEditFolderSheet(context, folderName, lists),
@@ -390,6 +419,7 @@ class _FolderScreenState extends State<FolderScreen> {
                 ],
               ),
               body: lists.isEmpty
+              //empty state when folder has no lists yet
                   ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -411,6 +441,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   final list = lists[index];
                   final data = list.data() as Map<String, dynamic>?;
                   final isPinned = data?['isPinned'] == true;
+                  //more than one member means its shared with someone else
                   final isShared = (list['memberIds'] as List).length > 1;
 
                   return GestureDetector(
@@ -422,6 +453,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.background,
                         borderRadius: BorderRadius.circular(12),
+                        //pinned wins over shared for border color. purple for pinned, pink for shared
                         border: Border.all(
                           color: isPinned ? AppColors.primary : (isShared ? AppColors.pink : AppColors.border),
                           width: isPinned || isShared ? 1.5 : 1,
@@ -439,12 +471,14 @@ class _FolderScreenState extends State<FolderScreen> {
                                   children: [
                                     Text(list['name'],
                                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                                    //tiny pin icon next to pinned list names
                                     if (isPinned) ...[
                                       const SizedBox(width: 6),
                                       const Icon(Icons.push_pin, size: 12, color: AppColors.primary),
                                     ],
                                   ],
                                 ),
+                                //live item count plus done count
                                 StreamBuilder(
                                   stream: _firestore.collection('items').where('listId', isEqualTo: list.id).snapshots(),
                                   builder: (context, AsyncSnapshot<QuerySnapshot> itemSnap) {
@@ -467,6 +501,7 @@ class _FolderScreenState extends State<FolderScreen> {
                   );
                 },
               ),
+              //plus button opens the create list sheet. new lists auto go into this folder
               floatingActionButton: FloatingActionButton(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,

@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
 
+//friends screen has 4 sections
+//search results, incoming friend requests, pending requests you sent, and accepted friends
+//each section is a streambuilder so it updates live when firestore changes
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
 
@@ -16,9 +19,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   final _searchController = TextEditingController();
 
+  //holds the search results so we can show them without another network call on every keystroke
   List<DocumentSnapshot> _searchResults = [];
   bool _isSearching = false;
 
+  //shorthand getter for the current users id since we use it in every query below
   String get _userId => _auth.currentUser!.uid;
 
   @override
@@ -27,24 +32,30 @@ class _FriendsScreenState extends State<FriendsScreen> {
     super.dispose();
   }
 
+  //searches for users by username as the user types
   Future<void> _searchUsers(String query) async {
     if (query.trim().isEmpty) {
       setState(() => _searchResults = []);
       return;
     }
     setState(() => _isSearching = true);
+    //firestore range query trick. \uf8ff is a very high unicode char
+    //so this returns every username that starts with the query string
     final results = await _firestore
         .collection('users')
         .where('username', isGreaterThanOrEqualTo: query.trim())
         .where('username', isLessThanOrEqualTo: '${query.trim()}\uf8ff')
         .get();
     setState(() {
+      //filter yourself out of your own search results
       _searchResults = results.docs.where((doc) => doc.id != _userId).toList();
       _isSearching = false;
     });
   }
 
+  //sends a friend request
   Future<void> _sendFriendRequest(String receiverId) async {
+    //check if weve already sent one to this user so we dont spam duplicates
     final existing = await _firestore
         .collection('friends')
         .where('requesterId', isEqualTo: _userId)
@@ -58,12 +69,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
       }
       return;
     }
+    //add a friends doc with status pending
     await _firestore.collection('friends').add({
       'requesterId': _userId,
       'receiverId': receiverId,
       'status': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
     });
+    //also drop a notification in the receivers feed so they see it next time they open alerts
     await _firestore.collection('notifications').add({
       'userId': receiverId,
       'type': 'friend_request',
@@ -83,6 +96,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
   }
 
+  //accept and decline just flip the status field on the friends doc
+  //the streambuilders pick up the change automatically and re render the sections
   Future<void> _acceptRequest(String friendId) async {
     await _firestore.collection('friends').doc(friendId).update({'status': 'accepted'});
   }
@@ -91,6 +106,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     await _firestore.collection('friends').doc(friendId).update({'status': 'declined'});
   }
 
+  //removing a friend fully deletes the doc so they can be re added later if they want
   Future<void> _removeFriend(String friendId) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -117,7 +133,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
   }
 
-  // Helper to safely read user data from a snapshot
+  //tiny helper that safely casts a snapshots data to a map
+  //saves us writing the same cast on every section below
   Map<String, dynamic>? _getUserData(DocumentSnapshot? doc) {
     return doc?.data() as Map<String, dynamic>?;
   }
@@ -134,7 +151,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
 
-          // Search bar
+          //search bar. onChanged fires _searchUsers on every keystroke
           TextField(
             controller: _searchController,
             onChanged: _searchUsers,
@@ -142,6 +159,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               hintText: 'Search by username...',
               hintStyle: const TextStyle(color: AppColors.subtext, fontSize: 14),
               prefixIcon: const Icon(Icons.search, color: AppColors.subtext),
+              //x button only shows up once the user has typed something
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
                 icon: const Icon(Icons.clear, color: AppColors.subtext),
@@ -165,10 +183,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
           const SizedBox(height: 8),
 
+          //spinner while a search is in flight
           if (_isSearching)
             const Center(child: CircularProgressIndicator(color: AppColors.primary)),
 
-          // Search results — all use null-safe data pattern
+          //SECTION 1 search results
+          //only renders if we have results. spread operator unpacks them into the parent list
           if (_searchResults.isNotEmpty) ...[
             const SizedBox(height: 8),
             const Text('SEARCH RESULTS',
@@ -181,10 +201,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
               return _UserRow(
                 username: username,
                 avatarColor: avatarColor,
+                //add button next to each search result
                 trailing: ElevatedButton(
                   onPressed: () => _sendFriendRequest(user.id),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    //shrinks the button tap target to the actual visual size
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -195,7 +217,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
             const SizedBox(height: 16),
           ],
 
-          // Incoming friend requests
+          //SECTION 2 incoming friend requests
+          //streams all friends docs where YOU are the receiver and status is pending
           StreamBuilder(
             stream: _firestore
                 .collection('friends')
@@ -204,6 +227,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 .snapshots(),
             builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
               final requests = snapshot.data?.docs ?? [];
+              //SizedBox.shrink is an empty widget. hides the whole section when theres nothing
               if (requests.isEmpty) return const SizedBox.shrink();
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,6 +235,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   const Text('FRIEND REQUESTS',
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.subtext, letterSpacing: 1.2)),
                   const SizedBox(height: 8),
+                  //futurebuilder inside the map to look up the requesters username
+                  //since friends doc only stores ids not names
                   ...requests.map((req) => FutureBuilder(
                     future: _firestore.collection('users').doc(req['requesterId']).get(),
                     builder: (context, AsyncSnapshot<DocumentSnapshot> userSnap) {
@@ -220,6 +246,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       return _UserRow(
                         username: username,
                         avatarColor: avatarColor,
+                        //accept and decline buttons side by side
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -255,7 +282,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
             },
           ),
 
-          // Pending requests you sent
+          //SECTION 3 pending requests YOU sent
+          //same idea as section 2 but flipped. you are the requester waiting for them to respond
           StreamBuilder(
             stream: _firestore
                 .collection('friends')
@@ -280,6 +308,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       return _UserRow(
                         username: username,
                         avatarColor: avatarColor,
+                        //no buttons here, just a pending badge since the other user hasnt responded yet
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
@@ -299,7 +328,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
             },
           ),
 
-          // Accepted friends list
+          //SECTION 4 accepted friends
+          //friendships are a single doc so we have to check both requesterId and receiverId
+          //to catch friendships where you were either side of the original request
           StreamBuilder(
             stream: _firestore
                 .collection('friends')
@@ -307,10 +338,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 .snapshots(),
             builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
               final allFriends = snapshot.data?.docs ?? [];
+              //filter down to only friendships involving the current user
               final friends = allFriends
                   .where((doc) => doc['requesterId'] == _userId || doc['receiverId'] == _userId)
                   .toList();
 
+              //empty state with an icon and a hint telling user to search
               if (friends.isEmpty) {
                 return Center(
                   child: Column(
@@ -336,6 +369,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.subtext, letterSpacing: 1.2)),
                   const SizedBox(height: 8),
                   ...friends.map((doc) {
+                    //figure out who the other user is. if you sent the request its the receiver, otherwise its the requester
                     final otherId = doc['requesterId'] == _userId
                         ? doc['receiverId']
                         : doc['requesterId'];
@@ -348,6 +382,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                         return _UserRow(
                           username: username,
                           avatarColor: avatarColor,
+                          //remove friend icon button, opens the confirm dialog from _removeFriend
                           trailing: IconButton(
                             icon: const Icon(Icons.person_remove_outlined,
                                 color: AppColors.subtext, size: 20),
@@ -367,6 +402,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 }
 
+//private reusable row widget. every section above uses this for consistent look
+//trailing is a Widget so each section can pass in whatever buttons or badges it needs
 class _UserRow extends StatelessWidget {
   final String username;
   final String avatarColor;
@@ -380,6 +417,7 @@ class _UserRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    //same hex to Color conversion used everywhere else in the app
     final color = Color(int.parse('0xFF${avatarColor.replaceAll('#', '')}'));
     final initial = username.isNotEmpty ? username.substring(0, 1).toUpperCase() : '?';
 
@@ -393,6 +431,7 @@ class _UserRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          //colored circle with first initial of username
           Container(
             width: 36,
             height: 36,
@@ -407,6 +446,7 @@ class _UserRow extends StatelessWidget {
             child: Text(username,
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.dark)),
           ),
+          //whatever the parent section passed in, add button, accept/decline, pending badge, or remove icon
           trailing,
         ],
       ),

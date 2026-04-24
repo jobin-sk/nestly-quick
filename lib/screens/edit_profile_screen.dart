@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/colors.dart';
 
+//edit profile screen lets user change username email avatar color and password
+//loads current values from firestore on open so fields are pre filled
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 
@@ -15,24 +17,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  //one controller per field. five total since password change has 3 fields
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  // Tracks visibility toggles for each password field
+  //each password field has its own eye toggle
   bool _currentPasswordVisible = false;
   bool _newPasswordVisible = false;
   bool _confirmPasswordVisible = false;
 
-  // Selected avatar color — loaded from Firestore on init
+  //currently selected avatar color. loaded from firestore in initState
   String _selectedColor = '#7C3AED';
 
-  // Whether we are currently saving
+  //used to disable the save button and show a spinner while firebase is working
   bool _isSaving = false;
 
-  // Available avatar colors to pick from
+  //preset list of avatar colors the user can pick from
+  //stored as a list of maps so we can show a label tooltip later if we want
   final List<Map<String, String>> _avatarColors = [
     {'color': '#7C3AED', 'label': 'Purple'},
     {'color': '#E879F9', 'label': 'Pink'},
@@ -44,13 +48,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     {'color': '#8B5CF6', 'label': 'Violet'},
   ];
 
+  //initState runs once when the screen opens. used to pre fill fields from firestore
   @override
   void initState() {
     super.initState();
     _loadUserData();
   }
 
-  // Loads current user data from Firestore to pre-fill the fields
+  //one time fetch of the users current profile data
   Future<void> _loadUserData() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
@@ -65,6 +70,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  //clean up every controller when screen closes
   @override
   void dispose() {
     _usernameController.dispose();
@@ -75,12 +81,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  // Saves profile changes to Firestore and Firebase Auth
+  //saves profile changes. long function because it handles firestore and firebase auth both
   Future<void> _saveChanges() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
 
-    // Basic username validation
+    //basic local validation first so we dont even call firebase if the input is bad
     if (_usernameController.text.trim().isEmpty) {
       _showError('Username cannot be empty');
       return;
@@ -94,10 +100,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
+    //flip saving state so the button shows a spinner and gets disabled
     setState(() => _isSaving = true);
 
     try {
-      // Check username uniqueness if it changed
+      //only check username uniqueness if it actually changed. saves a network call otherwise
       final currentDoc = await _firestore.collection('users').doc(uid).get();
       final currentUsername = currentDoc.data()?['username'] ?? '';
       if (_usernameController.text.trim() != currentUsername) {
@@ -112,19 +119,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         }
       }
 
-      // Update Firestore user document
+      //update the firestore user doc with the new values
       await _firestore.collection('users').doc(uid).update({
         'username': _usernameController.text.trim(),
         'email': _emailController.text.trim(),
         'avatarColor': _selectedColor,
       });
 
-      // Update email in Firebase Auth if it changed
+      //email lives in firebase auth not firestore so we have to update it separately
       if (_emailController.text.trim() != _auth.currentUser?.email) {
         await _auth.currentUser?.updateEmail(_emailController.text.trim());
       }
 
-      // Handle password change if fields are filled
+      //only handle password change if user actually typed a new password
+      //leaving these blank is the signal that they dont want to change it
       if (_newPasswordController.text.isNotEmpty) {
         if (_currentPasswordController.text.isEmpty) {
           _showError('Please enter your current password');
@@ -142,7 +150,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           return;
         }
 
-        // Re-authenticate before changing password — required by Firebase
+        //firebase requires recent re auth for sensitive actions like password change
+        //so we use the current password to get a fresh credential first
         final credential = EmailAuthProvider.credential(
           email: _auth.currentUser!.email!,
           password: _currentPasswordController.text,
@@ -151,6 +160,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         await _auth.currentUser?.updatePassword(_newPasswordController.text);
       }
 
+      //everything saved, pop back to settings with a success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile updated successfully')),
@@ -158,6 +168,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         context.pop();
       }
     } on FirebaseAuthException catch (e) {
+      //map firebases error codes to friendly messages like we do in auth_service
       switch (e.code) {
         case 'wrong-password':
           _showError('Current password is incorrect');
@@ -169,10 +180,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _showError('Something went wrong — please try again');
       }
     } finally {
+      //finally runs no matter what so saving state always gets flipped back off
       setState(() => _isSaving = false);
     }
   }
 
+  //small helper to avoid repeating the snackbar boilerplate every time
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
@@ -181,10 +194,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Get the current selected color as a Color object
+    //convert the selected hex string to a Color object for the avatar preview
     final avatarColor = Color(
       int.parse('0xFF${_selectedColor.replaceAll('#', '')}'),
     );
+    //first letter of current username goes on the avatar
     final initial = _usernameController.text.isNotEmpty
         ? _usernameController.text.substring(0, 1).toUpperCase()
         : '?';
@@ -192,6 +206,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        //back arrow pops back to settings
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.dark),
           onPressed: () => context.pop(),
@@ -207,7 +222,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
 
-            // Avatar preview — updates live as user picks a color
+            //avatar preview at the top. updates live when user picks a new color or types a new username
             Center(
               child: Container(
                 width: 72,
@@ -231,7 +246,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Color picker label
             const Center(
               child: Text(
                 'Choose Color',
@@ -240,7 +254,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 10),
 
-            // Color swatches row
+            //color picker row. Wrap so the circles wrap to a new line on small screens
             Center(
               child: Wrap(
                 spacing: 10,
@@ -255,14 +269,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       decoration: BoxDecoration(
                         color: color,
                         shape: BoxShape.circle,
-                        // White ring + primary border when selected
+                        //purple border around the selected color so its obvious which one is picked
                         border: isSelected
                             ? Border.all(color: AppColors.primary, width: 3)
                             : Border.all(color: Colors.transparent, width: 3),
+                        //soft glow around selected circle for extra visual pop
                         boxShadow: isSelected
                             ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 6, spreadRadius: 1)]
                             : null,
                       ),
+                      //checkmark overlay on the selected circle
                       child: isSelected
                           ? const Icon(Icons.check, size: 18, color: Colors.white)
                           : null,
@@ -276,13 +292,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const Divider(color: AppColors.border),
             const SizedBox(height: 20),
 
-            // Username field
+            //username field. onChanged triggers a rebuild so the avatar initial updates live as user types
             const Text('Username', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
             const SizedBox(height: 6),
             TextFormField(
               controller: _usernameController,
               autocorrect: false,
-              onChanged: (_) => setState(() {}), // rebuild to update avatar initial
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 hintText: 'e.g. toddles',
                 hintStyle: TextStyle(color: AppColors.subtext),
@@ -290,7 +306,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Email field
+            //email field
             const Text('Email', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
             const SizedBox(height: 6),
             TextFormField(
@@ -307,7 +323,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const Divider(color: AppColors.border),
             const SizedBox(height: 20),
 
-            // Password change section
+            //password change section. optional, only triggers if new password field has text
             const Text(
               'Change Password',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.dark),
@@ -319,7 +335,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Current password
+            //current password field. needed for firebase re authentication
             const Text('Current Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
             const SizedBox(height: 6),
             TextFormField(
@@ -339,7 +355,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 16),
 
-            // New password
+            //new password field
             const Text('New Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
             const SizedBox(height: 6),
             TextFormField(
@@ -359,7 +375,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Confirm new password
+            //confirm password field. checked against new password before saving
             const Text('Confirm New Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
             const SizedBox(height: 6),
             TextFormField(
@@ -379,7 +395,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 32),
 
-            // Save button
+            //save button. button shows a spinner while saving and disables itself to prevent double taps
             ElevatedButton(
               onPressed: _isSaving ? null : _saveChanges,
               style: ElevatedButton.styleFrom(

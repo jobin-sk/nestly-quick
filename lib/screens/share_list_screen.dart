@@ -4,32 +4,36 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/colors.dart';
 
+//share list screen. shows current members plus a list of friends who arent already members
+//owner can invite friends or remove members. non owners can only see the members list
 class ShareListScreen extends StatelessWidget {
   final String listId;
   const ShareListScreen({super.key, required this.listId});
 
   String get _userId => FirebaseAuth.instance.currentUser!.uid;
 
-  // Adds a user to the list's memberIds array
+  //adds a user to the lists memberIds array and drops them a notification
   Future<void> _inviteMember(BuildContext context, String userId) async {
+    //arrayUnion adds to the array without duplicates. safer than reading the whole array and rewriting it
     await FirebaseFirestore.instance.collection('lists').doc(listId).update({
       'memberIds': FieldValue.arrayUnion([userId]),
     });
 
-    // Get the list name to use in the notification message
+    //grab the list name so we can put it in the notification message
     final listDoc = await FirebaseFirestore.instance.collection('lists').doc(listId).get();
-    final listData = listDoc.data() as Map<String, dynamic>?;
+    final listData = listDoc.data();
     final listName = listData?['name'] ?? 'a list';
 
-    // Get the current user's username for the notification message
+    //grab the senders username for the same reason
     final senderDoc = await FirebaseFirestore.instance
         .collection('users')
         .doc(_userId)
         .get();
-    final senderData = senderDoc.data() as Map<String, dynamic>?;
+    final senderData = senderDoc.data();
     final senderUsername = senderData?['username'] ?? 'Someone';
 
-    // Send notification to the invited user
+    //drop a notification in the invited users feed so they see it in alerts
+    //referenceId points back to this list so tapping the notification jumps straight to it
     await FirebaseFirestore.instance.collection('notifications').add({
       'userId': userId,
       'type': 'list_shared',
@@ -46,7 +50,7 @@ class ShareListScreen extends StatelessWidget {
     }
   }
 
-  // Removes a member from the list
+  //removes one member from the list after confirm dialog
   Future<void> _removeMember(BuildContext context, String userId, String username) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -70,13 +74,14 @@ class ShareListScreen extends StatelessWidget {
     );
 
     if (confirmed == true) {
+      //arrayRemove is the opposite of arrayUnion. takes this user out of memberIds
       await FirebaseFirestore.instance.collection('lists').doc(listId).update({
         'memberIds': FieldValue.arrayRemove([userId]),
       });
     }
   }
 
-  // Stops sharing — removes all members except the owner
+  //kicks everyone off the list except the owner. basically un shares it
   Future<void> _stopSharing(BuildContext context, String ownerId) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -102,7 +107,7 @@ class ShareListScreen extends StatelessWidget {
     );
 
     if (confirmed == true) {
-      // Reset memberIds to just the owner
+      //overwrite memberIds with just the owner. faster than removing each person one at a time
       await FirebaseFirestore.instance.collection('lists').doc(listId).update({
         'memberIds': [ownerId],
       });
@@ -121,8 +126,8 @@ class ShareListScreen extends StatelessWidget {
         title: const Text('Share List',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
       ),
+      //outer streambuilder listens to the list doc for live member changes
       body: StreamBuilder(
-        // Stream the list document to get memberIds and ownerId in real time
         stream: FirebaseFirestore.instance.collection('lists').doc(listId).snapshots(),
         builder: (context, AsyncSnapshot<DocumentSnapshot> listSnapshot) {
           if (listSnapshot.connectionState == ConnectionState.waiting) {
@@ -131,11 +136,13 @@ class ShareListScreen extends StatelessWidget {
 
           final listData = listSnapshot.data?.data() as Map<String, dynamic>?;
           final ownerId = listData?['ownerId'] ?? '';
+          //cast to List<String> so we can use .contains safely below
           final memberIds = List<String>.from(listData?['memberIds'] ?? []);
+          //check if current user is the owner. controls what buttons they see
           final isOwner = _userId == ownerId;
 
+          //inner streambuilder listens to accepted friends so the invite list stays fresh
           return StreamBuilder(
-            // Stream accepted friends for the add from friends section
             stream: FirebaseFirestore.instance
                 .collection('friends')
                 .where('status', isEqualTo: 'accepted')
@@ -143,9 +150,11 @@ class ShareListScreen extends StatelessWidget {
             builder: (context, AsyncSnapshot<QuerySnapshot> friendsSnapshot) {
               final allFriends = friendsSnapshot.data?.docs ?? [];
 
-              // Filter to friends of the current user who are not already members
+              //filter down to friends of current user who arent already on the list
+              //two checks. first that theyre actually my friend, second that theyre not already a member
               final eligibleFriends = allFriends.where((doc) {
                 final isMyFriend = doc['requesterId'] == _userId || doc['receiverId'] == _userId;
+                //figure out which side of the friendship the OTHER person is on
                 final otherId = doc['requesterId'] == _userId
                     ? doc['receiverId']
                     : doc['requesterId'];
@@ -157,17 +166,20 @@ class ShareListScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 children: [
 
-                  // Current members section
+                  //SECTION 1 current members of this list
                   const Text('CURRENT MEMBERS',
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.subtext, letterSpacing: 1.2)),
                   const SizedBox(height: 10),
 
+                  //spread operator unpacks the mapped list into individual children
+                  //each member row is a FutureBuilder since memberIds only stores ids not usernames
                   ...memberIds.map((memberId) => FutureBuilder(
                     future: FirebaseFirestore.instance.collection('users').doc(memberId).get(),
                     builder: (context, AsyncSnapshot<DocumentSnapshot> userSnap) {
                       final data = userSnap.data?.data() as Map<String, dynamic>?;
                       final username = data?['username'] ?? '';
                       final avatarColor = data?['avatarColor'] ?? '#7C3AED';
+                      //is this specific row the owner of the list
                       final isThisOwner = memberId == ownerId;
                       final color = Color(int.parse('0xFF${avatarColor.replaceAll('#', '')}'));
                       final initial = username.isNotEmpty
@@ -184,7 +196,7 @@ class ShareListScreen extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            // Avatar circle
+                            //avatar circle with users color and first initial
                             Container(
                               width: 36, height: 36,
                               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
@@ -198,7 +210,7 @@ class ShareListScreen extends StatelessWidget {
                               child: Text(username,
                                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.dark)),
                             ),
-                            // Owner or Member tag
+                            //owner gets a purple tag. everyone else gets a grey member tag
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -214,7 +226,8 @@ class ShareListScreen extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            // Remove button — only owner can remove others, can't remove self
+                            //remove button. only visible to the owner and only for non owner rows
+                            //this prevents owners from accidentally removing themselves
                             if (isOwner && !isThisOwner)
                               IconButton(
                                 icon: Icon(Icons.remove_circle_outline, color: AppColors.danger, size: 20),
@@ -227,7 +240,8 @@ class ShareListScreen extends StatelessWidget {
                   )),
                   const SizedBox(height: 20),
 
-                  // Add from friends section — only show if there are eligible friends
+                  //SECTION 2 friends user can invite
+                  //only renders if there are eligible friends. hides the header if empty
                   if (eligibleFriends.isNotEmpty) ...[
                     const Text('ADD FROM FRIENDS',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.subtext, letterSpacing: 1.2)),
@@ -271,6 +285,7 @@ class ShareListScreen extends StatelessWidget {
                                   child: Text(username,
                                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.dark)),
                                 ),
+                                //invite button adds them to the lists memberIds
                                 ElevatedButton(
                                   onPressed: () => _inviteMember(context, otherId),
                                   style: ElevatedButton.styleFrom(
@@ -289,7 +304,7 @@ class ShareListScreen extends StatelessWidget {
                     const SizedBox(height: 20),
                   ],
 
-                  // Stop sharing button — only visible to the owner
+                  //stop sharing button. only owner sees it and only when there are other members to kick
                   if (isOwner && memberIds.length > 1)
                     OutlinedButton(
                       onPressed: () => _stopSharing(context, ownerId),

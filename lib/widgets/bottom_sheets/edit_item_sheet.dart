@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme/colors.dart';
 
+//bottom sheet that opens when user long presses an item and picks edit
+//pre fills the fields with the items existing values so user can change whatever
 class EditItemSheet extends StatefulWidget {
+  //DocumentSnapshot is firestores wrapper for a single document (this specific item)
   final DocumentSnapshot item;
+  //list of category docs for the parent list so user can change which category the item belongs to
   final List<DocumentSnapshot> categories;
 
   const EditItemSheet({
@@ -17,25 +21,29 @@ class EditItemSheet extends StatefulWidget {
 }
 
 class _EditItemSheetState extends State<EditItemSheet> {
+  //firestore instance lets us read and write documents
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  //late means we promise to initialize these before theyre used (in initState below)
   late TextEditingController _nameController;
   late TextEditingController _quantityController;
   late TextEditingController _notesController;
 
-  // Currently selected category ID — null means uncategorized
+  //currently selected category, null means uncategorized (the None chip)
   String? _selectedCategoryId;
 
+  //initState runs once when the sheet opens, used here to pre fill everything
   @override
   void initState() {
     super.initState();
-    // Pre-fill all fields with the item's current values
+    //?? '' means if the field is null use empty string so the controller doesnt crash
     _nameController = TextEditingController(text: widget.item['name'] ?? '');
     _quantityController = TextEditingController(text: widget.item['quantity'] ?? '');
     _notesController = TextEditingController(text: widget.item['notes'] ?? '');
     _selectedCategoryId = widget.item['categoryId'];
   }
 
+  //clean up controllers when sheet closes so we dont leak memory
   @override
   void dispose() {
     _nameController.dispose();
@@ -44,12 +52,15 @@ class _EditItemSheetState extends State<EditItemSheet> {
     super.dispose();
   }
 
-  // Saves the updated item to Firestore
+  //saves the updated item back to firestore
   Future<void> _saveChanges() async {
+    //bail out if the user cleared the name field, items cant be nameless
     if (_nameController.text.trim().isEmpty) return;
 
+    //update just overwrites these fields on the existing doc, everything else stays the same
     await _firestore.collection('items').doc(widget.item.id).update({
       'name': _nameController.text.trim(),
+      //if quantity is empty store null so we dont show "x" on the item row for nothing
       'quantity': _quantityController.text.trim().isEmpty
           ? null
           : _quantityController.text.trim(),
@@ -57,25 +68,29 @@ class _EditItemSheetState extends State<EditItemSheet> {
           ? null
           : _notesController.text.trim(),
       'categoryId': _selectedCategoryId,
+      //server timestamp so the time is consistent across devices not whatever the phones clock says
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
+    //mounted check since we awaited firestore, user might have closed the sheet already
     if (mounted) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
+      //viewInsets.bottom is the keyboard height, this pushes the sheet up so fields arent hidden
       padding: EdgeInsets.only(
         left: 20, right: 20, top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Column(
+        //min so the column only takes as much vertical space as it needs
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
 
-          // Sheet handle
+          //little grey bar at the top of the sheet, visual cue that you can swipe it down
           Center(
             child: Container(
               width: 40, height: 4,
@@ -95,12 +110,13 @@ class _EditItemSheetState extends State<EditItemSheet> {
           ),
           const SizedBox(height: 16),
 
-          // Item name field
+          //item name field
           const Text('Item Name',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
           const SizedBox(height: 6),
           TextField(
             controller: _nameController,
+            //autofocus pops the keyboard open as soon as the sheet opens
             autofocus: true,
             decoration: const InputDecoration(
               hintText: 'e.g. Milk',
@@ -109,7 +125,7 @@ class _EditItemSheetState extends State<EditItemSheet> {
           ),
           const SizedBox(height: 12),
 
-          // Quantity field
+          //quantity field, optional because not every item has a count
           const Text('Quantity (optional)',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
           const SizedBox(height: 6),
@@ -122,7 +138,7 @@ class _EditItemSheetState extends State<EditItemSheet> {
           ),
           const SizedBox(height: 12),
 
-          // Notes field
+          //notes field for extra info like "check if we already have this"
           const Text('Notes (optional)',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
           const SizedBox(height: 6),
@@ -135,28 +151,30 @@ class _EditItemSheetState extends State<EditItemSheet> {
           ),
           const SizedBox(height: 16),
 
-          // Category section — shown as colored chips instead of dropdown
+          //category picker, done as colored chips instead of a dropdown so the colors are visible
           const Text('Category',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
           const SizedBox(height: 10),
 
+          //if no categories exist for this list show a hint instead of an empty chip row
           if (widget.categories.isEmpty)
-          // No categories exist yet for this list
             Text(
               'No categories yet — add one from the list view',
               style: TextStyle(fontSize: 12, color: AppColors.subtext),
             )
           else
+          //Wrap lays chips out in rows and wraps to a new row when it runs out of space
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                // None chip — deselects any category
+                //None chip lets user pick no category (uncategorized)
                 GestureDetector(
                   onTap: () => setState(() => _selectedCategoryId = null),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
+                      //highlight the chip when its the selected one
                       color: _selectedCategoryId == null
                           ? AppColors.primaryLight
                           : AppColors.backgroundAlt,
@@ -181,19 +199,23 @@ class _EditItemSheetState extends State<EditItemSheet> {
                   ),
                 ),
 
-                // One chip per category — uses the category's color as background
+                //spread operator (...) turns the list returned by map into individual children
+                //one chip per category, each uses its own color as the background
                 ...widget.categories.map((cat) {
                   final isSelected = _selectedCategoryId == cat.id;
+                  //color is stored as hex string like "#FFAABB" in firestore
+                  //this strips the # and adds FF (full opacity) to turn it into a Color object
                   final catColor = Color(
                     int.parse('0xFF${cat['color'].toString().replaceAll('#', '')}'),
                   );
 
                   return GestureDetector(
+                    //tap the selected chip again to deselect it back to None
                     onTap: () => setState(() => _selectedCategoryId = isSelected ? null : cat.id),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        // Full color when selected, lighter tint when not
+                        //full color when selected, faded version when not (easy visual diff)
                         color: isSelected ? catColor : catColor.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
@@ -204,7 +226,7 @@ class _EditItemSheetState extends State<EditItemSheet> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Checkmark when selected
+                          //checkmark shows up only on the selected chip so it really stands out
                           if (isSelected) ...[
                             const Icon(Icons.check, size: 14, color: AppColors.dark),
                             const SizedBox(width: 4),
@@ -226,7 +248,7 @@ class _EditItemSheetState extends State<EditItemSheet> {
             ),
           const SizedBox(height: 20),
 
-          // Save button
+          //save button, style comes from app wide theme in main.dart
           ElevatedButton(
             onPressed: _saveChanges,
             style: ElevatedButton.styleFrom(

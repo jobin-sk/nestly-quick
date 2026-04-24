@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -16,14 +15,13 @@ import 'services/auth_service.dart';
 import 'theme/colors.dart';
 import 'screens/friends_screen.dart';
 
-
+//async then were waiting for firebase to intialize before app starts
 void main() async {
-  // Ensure Flutter is initialized before Firebase
+  //flutter needs its binding ready before any async platform
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Firebase — must happen before runApp
+  // initialize firebase  must happen before runApp
   await Firebase.initializeApp();
-
+  //multi provider makes auth service available to every screen so we dont pass user around manually
   runApp(
     MultiProvider(
       providers: [
@@ -34,7 +32,7 @@ void main() async {
   );
 }
 
-// Root widget of the entire app
+// root widget of the whole app
 class NestlyQuickApp extends StatelessWidget {
   const NestlyQuickApp({super.key});
 
@@ -44,7 +42,8 @@ class NestlyQuickApp extends StatelessWidget {
       title: 'NestlyQuick',
       debugShowCheckedModeBanner: false,
 
-      // App-wide theme using our purple/pink color scheme
+      // setting theme for reference colors so we can change these later ( so always consistent across pages)
+      // scarlett says to much white
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primary,
@@ -52,12 +51,14 @@ class NestlyQuickApp extends StatelessWidget {
           background: AppColors.background,
         ),
         scaffoldBackgroundColor: AppColors.background,
+// top bar themes
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.background,
           foregroundColor: AppColors.dark,
           elevation: 0,
           centerTitle: true,
         ),
+        //elevated button in app dont have to restyle buttons on all the screens now :D
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
@@ -67,6 +68,8 @@ class NestlyQuickApp extends StatelessWidget {
             ),
           ),
         ),
+
+        //default  style for text input fields gives login sign up fields and bottom sheet consistent color ( purple now switch to pink to show )
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: AppColors.primaryLighter,
@@ -84,13 +87,14 @@ class NestlyQuickApp extends StatelessWidget {
           ),
         ),
       ),
-
+      //plugs gorouter into app all navigation action is routed through this config
       routerConfig: _router,
     );
   }
 }
-
+//all nav for the app is here isntead of scattered push calls
 final GoRouter _router = GoRouter(
+  //first screen the app tries to show on laucnh if already loged in sends to dashboard
   initialLocation: '/login',
 
   // redirect checks Firebase auth state on every navigation
@@ -104,7 +108,7 @@ final GoRouter _router = GoRouter(
     if (isLoggedIn && isOnAuthScreen) return '/dashboard';
     return null;
   },
-
+// these sit outside  shellroute so they dont show nav bar until theyre logged in
   routes: [
     GoRoute(
       path: '/login',
@@ -114,14 +118,17 @@ final GoRouter _router = GoRouter(
       path: '/signup',
       builder: (context, state) => const SignupScreen(),
     ),
+    //wraps every screen inside it with the scaffoldwith bottom nav widget, this way the bottom stays persistent
     ShellRoute(
       builder: (context, state, child) => ScaffoldWithBottomNav(child: child),
       routes: [
+
         GoRoute(
           path: '/dashboard',
           builder: (context, state) => const DashboardScreen(),
           routes: [
             GoRoute(
+              //folderid is path param w/e value is in url gets passed to folderscreen
               path: 'folder/:folderId',
               builder: (context, state) => FolderScreen(
                 folderId: state.pathParameters['folderId']!,
@@ -133,6 +140,7 @@ final GoRouter _router = GoRouter(
                 listId: state.pathParameters['listId']!,
               ),
             ),
+            //share screen is nested under specific list so it knows which ones being shared
             GoRoute(
               path: 'list/:listId/share',
               builder: (context, state) => ShareListScreen(
@@ -153,6 +161,7 @@ final GoRouter _router = GoRouter(
           path: '/settings',
           builder: (context, state) => const SettingsScreen(),
           routes: [
+            //edit profile is nested under settings should return user to the settings screen naturally
             GoRoute(
               path: 'edit-profile',
               builder: (context, state) => const EditProfileScreen(),
@@ -163,11 +172,11 @@ final GoRouter _router = GoRouter(
     ),
   ],
 );
-
+//the persistent scaffold that wraps every main screen shoulds current routes content in the body and bottom nav bar below it
 class ScaffoldWithBottomNav extends StatelessWidget {
   final Widget child;
   const ScaffoldWithBottomNav({super.key, required this.child});
-
+//highlights tab based on current route.
   int _getCurrentIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     if (location.startsWith('/dashboard')) return 0;
@@ -188,6 +197,7 @@ class ScaffoldWithBottomNav extends StatelessWidget {
         backgroundColor: AppColors.background,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
+        //context.go() replaces the currnt rounte instead of stacking on old ones
         onTap: (index) {
           switch (index) {
             case 0:

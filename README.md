@@ -21,12 +21,7 @@
 
 ## First Time Setup
 
-1. Make sure Flutter is installed on your machine
-2. Open a terminal and run `flutter create nestlyquick`
-3. Add dependencies to `pubspec.yaml` and run `flutter pub get`
-4. Create the folder structure inside `lib/` manually
-5. Drop all generated files into their correct locations
-6. Run `flutter run`
+make sure cd into nestlyquick, flutter run, r R for reloads
 
 ---
 
@@ -113,10 +108,6 @@ nestlyquick/
 | cloud_firestore | ^5.0.0 | Firestore cloud database |
 
 ---
-
-## Week 5 Reminder — Enable Offline Persistence
-
-Add this when initializing Firestore so the app works offline at Costco:
 
 ```dart
 FirebaseFirestore.instance.settings = 

@@ -4,6 +4,8 @@ import '../theme/colors.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 
+//signup screen, same pattern as login but with extra fields and stricter validation
+//note the redirect issue from login applies here too, after signup screen doesnt auto move
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
@@ -12,20 +14,20 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
-  // Form key used to validate all fields at once
+  //form key lets us validate every field at once when user taps create account
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers to read what the user typed
+  //one controller per field so we can read what the user typed
   final _emailController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  // Tracks whether password fields show dots or plain text
+  //two separate flags since password and confirm password have their own eye toggles
   bool _passwordVisible = false;
   bool _confirmPasswordVisible = false;
 
-  // Free up memory when screen is removed
+  //dispose controllers when screen is removed so we dont leak memory
   @override
   void dispose() {
     _emailController.dispose();
@@ -35,15 +37,20 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  // Called when user taps Create Account
+  //called when user taps create account
   void _handleSignup() async {
+    //runs every validator below, returns true only if all fields pass
     if (_formKey.currentState!.validate()) {
+      //listen false because we just want to call a method not rebuild on auth changes
       final authService = Provider.of<AuthService>(context, listen: false);
+      //signUp handles firebase auth account creation AND writing the user doc to firestore
+      //returns null on success or an error message string on failure
       final error = await authService.signUp(
         email: _emailController.text,
         password: _passwordController.text,
         username: _usernameController.text,
       );
+      //mounted check since we awaited firebase, screen might have been closed in the meantime
       if (error != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error)),
@@ -56,17 +63,19 @@ class _SignupScreenState extends State<SignupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      // Back arrow to return to login screen
+      //appbar with a back arrow so user can return to login
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.dark),
+          //pop instead of go, since we pushed here from login we want to unstack back to it
           onPressed: () => context.pop(),
         ),
       ),
       body: SafeArea(
         child: Center(
+          //scrollable so fields stay reachable when keyboard opens on smaller screens
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Form(
@@ -75,7 +84,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
 
-                  // Title
+                  //title and subtitle at the top of the form
                   const Text(
                     'Create Account',
                     textAlign: TextAlign.center,
@@ -96,7 +105,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 36),
 
-                  // Email field
+                  //email field
                   const Text(
                     'Email',
                     style: TextStyle(
@@ -108,13 +117,16 @@ class _SignupScreenState extends State<SignupScreen> {
                   const SizedBox(height: 6),
                   TextFormField(
                     controller: _emailController,
+                    //gives user the @ symbol on the keyboard
                     keyboardType: TextInputType.emailAddress,
+                    //off so it doesnt try to "fix" their email address
                     autocorrect: false,
                     decoration: const InputDecoration(
                       hintText: 'you@email.com',
                       hintStyle: TextStyle(color: AppColors.subtext),
                     ),
-                    // Validates email format using a basic regex check
+                    //regex checks for something@something.something, basic email shape
+                    //firebase also validates on its end so this is just an early check
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Please enter your email';
@@ -127,7 +139,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Username field
+                  //username field
                   const Text(
                     'Username',
                     style: TextStyle(
@@ -144,6 +156,8 @@ class _SignupScreenState extends State<SignupScreen> {
                       hintText: 'e.g. Amanda',
                       hintStyle: TextStyle(color: AppColors.subtext),
                     ),
+                    //basic validation only, uniqueness check happens in auth_service signUp
+                    //against firestore so we dont duplicate the network call here
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Please enter a username';
@@ -151,16 +165,16 @@ class _SignupScreenState extends State<SignupScreen> {
                       if (value.length < 4) {
                         return 'Username must be at least 4 characters';
                       }
+                      //no spaces allowed so @mentions and search work cleanly
                       if (value.contains(' ')) {
                         return 'Username cannot contain spaces';
                       }
                       return null;
-                      // TODO Week 5: also check Firestore that username is unique
                     },
                   ),
                   const SizedBox(height: 16),
 
-                  // Password field
+                  //password field
                   const Text(
                     'Password',
                     style: TextStyle(
@@ -172,10 +186,12 @@ class _SignupScreenState extends State<SignupScreen> {
                   const SizedBox(height: 6),
                   TextFormField(
                     controller: _passwordController,
+                    //obscureText hides the password as dots unless eye toggle is on
                     obscureText: !_passwordVisible,
                     decoration: InputDecoration(
                       hintText: 'Minimum 6 characters',
                       hintStyle: const TextStyle(color: AppColors.subtext),
+                      //eye toggle button on the right side of the field
                       suffixIcon: IconButton(
                         icon: Icon(
                           _passwordVisible
@@ -183,6 +199,7 @@ class _SignupScreenState extends State<SignupScreen> {
                               : Icons.visibility_outlined,
                           color: AppColors.subtext,
                         ),
+                        //setState triggers a rebuild so the icon and text swap
                         onPressed: () {
                           setState(() {
                             _passwordVisible = !_passwordVisible;
@@ -190,6 +207,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         },
                       ),
                     ),
+                    //6 char minimum matches firebase auths weak-password threshold
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please enter a password';
@@ -202,7 +220,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Confirm password field
+                  //confirm password field, makes sure user didnt typo their password
                   const Text(
                     'Confirm Password',
                     style: TextStyle(
@@ -232,7 +250,9 @@ class _SignupScreenState extends State<SignupScreen> {
                         },
                       ),
                     ),
-                    // Checks that both password fields match
+                    //compares against the main password controllers current text
+                    //important to reference _passwordController.text here not a stored value
+                    //so we get whatever they typed most recently
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please confirm your password';
@@ -245,7 +265,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 28),
 
-                  // Create account button
+                  //create account button, style comes from the app wide theme in main.dart
                   ElevatedButton(
                     onPressed: _handleSignup,
                     style: ElevatedButton.styleFrom(
@@ -261,7 +281,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Back to login link
+                  //back to login link at the bottom for users who already have an account
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -273,6 +293,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         ),
                       ),
                       GestureDetector(
+                        //pop unstacks back to login instead of pushing a new login screen on top
                         onTap: () => context.pop(),
                         child: const Text(
                           'Log In',

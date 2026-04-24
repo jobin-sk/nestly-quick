@@ -1,5 +1,5 @@
 name: nestlyquick
-description: "A new Flutter project."
+description: "List maangment app"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -52,7 +52,7 @@ flutter_launcher_icons:
   image_path: "assets/nestlyquick.png"
   adaptive_icon_background: "#1E1B4B"
   adaptive_icon_foreground: "assets/nestlyquick.png"
-
+# basically loading screen
 flutter_native_splash:
   color: "#1E1B4B"
   image: assets/nestlyquick.png
