@@ -1,5 +1,5 @@
 # NestlyQuick — Project README
-
+A app that organizes  lists and shares them across users
 ## Running the App
 
 1. Start your emulator in Android Studio (Device Manager)
